@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "retained.h"
+
+#include <hal/nrf_power.h>
 #include <string.h>
-#include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/crc.h>
-#include <hal/nrf_power.h>
-#include "retained.h"
 
 /* nRF52 RAM (really, RAM AHB slaves) are partitioned as:
  * * Up to 8 blocks of two 4 KiBy byte "small" sections
@@ -22,7 +23,7 @@
  */
 
 /* Inclusive address of RAM start */
-#define SRAM_BEGIN (uintptr_t)DT_REG_ADDR(DT_NODELABEL(sram0))
+#define SRAM_BEGIN (uintptr_t) DT_REG_ADDR(DT_NODELABEL(sram0))
 
 /* Exclusive address of RAM end */
 #define SRAM_END (SRAM_BEGIN + (uintptr_t)DT_REG_SIZE(DT_NODELABEL(sram0)))
@@ -60,19 +61,14 @@
  *
  * @param enable true to enable retention, false to clear retention
  */
-int ram_range_retain(const void *ptr,
-			    size_t len,
-			    bool enable)
-{
+int ram_range_retain(const void* ptr, size_t len, bool enable) {
 	uintptr_t addr = (uintptr_t)ptr;
 	uintptr_t addr_end = addr + len;
 
 	/* Error if the provided range is empty or doesn't lie
 	 * entirely within the SRAM address space.
 	 */
-	if ((len == 0U)
-	    || (addr < SRAM_BEGIN)
-	    || (addr > (SRAM_END - len))) {
+	if ((len == 0U) || (addr < SRAM_BEGIN) || (addr > (SRAM_END - len))) {
 		return -EINVAL;
 	}
 
@@ -107,9 +103,9 @@ int ram_range_retain(const void *ptr,
 			section %= sections_per_block;
 		}
 
-		uint32_t section_mask =
-			(POWER_RAM_POWERSET_S0RETENTION_On
-					 << (section + POWER_RAM_POWERSET_S0RETENTION_Pos));
+		uint32_t section_mask
+			= (POWER_RAM_POWERSET_S0RETENTION_On
+			   << (section + POWER_RAM_POWERSET_S0RETENTION_Pos));
 
 		if (enable) {
 			nrf_power_rampower_mask_on(NRF_POWER, block, section_mask);

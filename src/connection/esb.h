@@ -25,7 +25,7 @@
 
 #include <esb.h>
 
-void event_handler(struct esb_evt const *event);
+void event_handler(struct esb_evt const* event);
 int clocks_start(void);
 int esb_initialize(bool);
 
