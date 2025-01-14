@@ -8,7 +8,9 @@
 #define RETAINED_H_
 
 #include <inttypes.h>
+#include <stdbool.h>
+#include <stddef.h>
 
-int ram_range_retain(const void *ptr, size_t len, bool enable);
+int ram_range_retain(const void* ptr, size_t len, bool enable);
 
 #endif /* RETAINED_H_ */
