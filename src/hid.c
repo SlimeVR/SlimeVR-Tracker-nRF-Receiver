@@ -226,15 +226,6 @@ void usb_init_thread(void) {
 
 K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0, 0);
 
-//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9
-//|b10     |b11     |b12     |b13     |b14     |b15     | |type    |id      |packet data
-//| |0       |id      |proto   |batt    |batt_v  |temp    |brd_id  |mcu_id  |imu_id
-//|mag_id  |fw_date          |major   |minor   |patch   |rssi    | |1       |id      |q0
-//|q1               |q2               |q3               |a0               |a1 |a2 | |2
-//|id      |batt    |batt_v  |temp    |q_buf                              |a0 |a1 |a2
-//|rssi    | |3	   |id      |svr_stat|status  |resv |rssi    | |255     |id      |addr
-//|resv                                                                   |
-
 void hid_write_packet_n(uint8_t* data, uint8_t rssi) {
 	memcpy(&report.data, data, 16);  // all data can be passed through
 	if (data[0] != 1) {  // packet 1 is full precision quat and accel, no room for rssi
