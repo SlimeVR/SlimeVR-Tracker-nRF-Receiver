@@ -1,5 +1,5 @@
 # Receiver firmware for SlimeNRF
-Firmware for Nordic nRF52833 / nRF52840 chips.
+Firmware for Nordic nRF52833 / nRF52840 SoC.
 
 Please see https://docs.shinebright.dev/diy/smol-slime.html for more information and usage.
 
