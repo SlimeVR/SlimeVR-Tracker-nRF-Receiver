@@ -20,23 +20,24 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#include "build_defines.h"
 #include "globals.h"
 #include "system/system.h"
+#include "build_defines.h"
 
 #define USB DT_NODELABEL(usbd)
 #if DT_NODE_HAS_STATUS(USB, okay)
 
-#include <ctype.h>
-#include <zephyr/console/console.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/logging/log_ctrl.h>
+#include <zephyr/console/console.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/logging/log_ctrl.h>
+
+#include <ctype.h>
 
 #define DFU_DBL_RESET_MEM 0x20007F7C
 #define DFU_DBL_RESET_APP 0x4ee5677e
 
-uint32_t* dbl_reset_mem = ((uint32_t*)DFU_DBL_RESET_MEM);
+uint32_t* dbl_reset_mem = ((uint32_t*) DFU_DBL_RESET_MEM);
 
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
@@ -48,10 +49,10 @@ K_THREAD_DEFINE(console_thread_id, 1024, console_thread, NULL, NULL, NULL, 6, 0,
 #define NRF5_BOOTLOADER CONFIG_BOARD_HAS_NRF5_BOOTLOADER
 
 #if NRF5_BOOTLOADER
-static const struct device* gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 #endif
 
-static const char* meows[] = {
+static const char *meows[] = {
 	"Meow",
 	"Meow meow",
 	"Mrrrp",
@@ -70,31 +71,41 @@ static const char* meows[] = {
 	"purr",
 };
 
-static const char* meow_punctuations[] = {".", "?", "!", "-", "~", ""};
+static const char *meow_punctuations[] = {
+	".",
+	"?",
+	"!",
+	"-",
+	"~",
+	""
+};
 
-static const char* meow_suffixes[]
-	= {" :3",
-	   " :3c",
-	   " ;3",
-	   " ;3c",
-	   " x3",
-	   " x3c",
-	   " X3",
-	   " X3c",
-	   " >:3",
-	   " >:3c",
-	   " >;3",
-	   " >;3c",
-	   ""};
+static const char *meow_suffixes[] = {
+	" :3",
+	" :3c",
+	" ;3",
+	" ;3c",
+	" x3",
+	" x3c",
+	" X3",
+	" X3c",
+	" >:3",
+	" >:3c",
+	" >;3",
+	" >;3c",
+	""
+};
 
-static void skip_dfu(void) {
-#if DFU_EXISTS  // Using Adafruit bootloader
-	(*dbl_reset_mem) = DFU_DBL_RESET_APP;  // Skip DFU
+static void skip_dfu(void)
+{
+#if DFU_EXISTS // Using Adafruit bootloader
+	(*dbl_reset_mem) = DFU_DBL_RESET_APP; // Skip DFU
 	ram_range_retain(dbl_reset_mem, sizeof(dbl_reset_mem), true);
 #endif
 }
 
-static void print_info(void) {
+static void print_info(void)
+{
 	printk(CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT "\n");
 	printk(FW_STRING);
 
@@ -102,13 +113,11 @@ static void print_info(void) {
 	printk("SOC: " CONFIG_SOC "\n");
 	printk("Target: " CONFIG_BOARD_TARGET "\n");
 
-	printk(
-		"\nDevice address: %012llX\n",
-		*(uint64_t*)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF
-	);
+	printk("\nDevice address: %012llX\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
 }
 
-static void print_uptime(void) {
+static void print_uptime(void)
+{
 	int64_t uptime = k_ticks_to_us_floor64(k_uptime_ticks());
 
 	uint32_t days = uptime / 86400000000;
@@ -122,50 +131,36 @@ static void print_uptime(void) {
 	uint16_t milliseconds = uptime / 1000;
 	uint16_t microseconds = uptime %= 1000;
 
-	printk(
-		"Uptime: %u.%02u:%02u:%02u.%03u,%03u\n",
-		days,
-		hours,
-		minutes,
-		seconds,
-		milliseconds,
-		microseconds
-	);
+	printk("Uptime: %u.%02u:%02u:%02u.%03u,%03u\n", days, hours, minutes, seconds, milliseconds, microseconds);
 }
 
-static void print_meow(void) {
+static void print_meow(void)
+{
 	int64_t ticks = k_uptime_ticks();
 
-	ticks %= ARRAY_SIZE(meows) * ARRAY_SIZE(meow_punctuations)
-		   * ARRAY_SIZE(meow_suffixes);  // silly number generator
+	ticks %= ARRAY_SIZE(meows) * ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes); // silly number generator
 	uint8_t meow = ticks / (ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes));
 	ticks %= (ARRAY_SIZE(meow_punctuations) * ARRAY_SIZE(meow_suffixes));
 	uint8_t punctuation = ticks / ARRAY_SIZE(meow_suffixes);
 	uint8_t suffix = ticks % ARRAY_SIZE(meow_suffixes);
 
-	printk(
-		"%s%s%s\n",
-		meows[meow],
-		meow_punctuations[punctuation],
-		meow_suffixes[suffix]
-	);
+	printk("%s%s%s\n", meows[meow], meow_punctuations[punctuation], meow_suffixes[suffix]);
 }
 
-static void print_list(void) {
+static void print_list(void)
+{
 	printk("Stored devices:\n");
-	for (uint8_t i = 0; i < stored_trackers; i++) {
+	for (uint8_t i = 0; i < stored_trackers; i++)
 		printk("%012llX\n", stored_tracker_addr[i]);
-	}
 }
 
-static void console_thread(void) {
+static void console_thread(void)
+{
 	console_getline_init();
-	while (log_data_pending()) {
+	while (log_data_pending())
 		k_usleep(1);
-	}
 	k_msleep(100);
-	printk("*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n"
-	);
+	printk("*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n");
 	printk(FW_STRING);
 	printk("info                         Get device information\n");
 	printk("uptime                       Get device uptime\n");
@@ -192,33 +187,45 @@ static void console_thread(void) {
 	uint8_t command_meow[] = "meow";
 
 	while (1) {
-		uint8_t* line = console_getline();
-		for (uint8_t* p = line; *p; ++p) {
+		uint8_t *line = console_getline();
+		for (uint8_t *p = line; *p; ++p) {
 			*p = tolower(*p);
 		}
 
-		if (memcmp(line, command_info, sizeof(command_info)) == 0) {
+		if (memcmp(line, command_info, sizeof(command_info)) == 0)
+		{
 			print_info();
-		} else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0) {
+		}
+		else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0)
+		{
 			print_uptime();
-		} else if (memcmp(line, command_list, sizeof(command_list)) == 0) {
+		}
+		else if (memcmp(line, command_list, sizeof(command_list)) == 0)
+		{
 			print_list();
-		} else if (memcmp(line, command_reboot, sizeof(command_reboot)) == 0) {
+		}
+		else if (memcmp(line, command_reboot, sizeof(command_reboot)) == 0)
+		{
 			skip_dfu();
 			sys_reboot(SYS_REBOOT_COLD);
-		} else if (memcmp(line, command_pair, sizeof(command_pair)) == 0) {
+		}
+		else if (memcmp(line, command_pair, sizeof(command_pair)) == 0)
+		{
 			skip_dfu();
 			reboot_counter_write(101);
 			k_msleep(1);
 			sys_reboot(SYS_REBOOT_WARM);
-		} else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) {
+		}
+		else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) 
+		{
 			skip_dfu();
 			reboot_counter_write(102);
 			k_msleep(1);
 			sys_reboot(SYS_REBOOT_WARM);
 		}
 #if DFU_EXISTS
-		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0) {
+		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0)
+		{
 #if ADAFRUIT_BOOTLOADER
 			NRF_POWER->GPREGRET = 0x57;
 			sys_reboot(SYS_REBOOT_COLD);
@@ -228,9 +235,12 @@ static void console_thread(void) {
 #endif
 		}
 #endif
-		else if (memcmp(line, command_meow, sizeof(command_meow)) == 0) {
+		else if (memcmp(line, command_meow, sizeof(command_meow)) == 0) 
+		{
 			print_meow();
-		} else {
+		}
+		else
+		{
 			printk("Unknown command\n");
 		}
 	}

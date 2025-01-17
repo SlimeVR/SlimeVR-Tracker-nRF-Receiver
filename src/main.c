@@ -22,12 +22,12 @@
 */
 #include "globals.h"
 #include "system/system.h"
-// #include "timer.h"
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/kernel.h>
-#include <zephyr/sys/reboot.h>
-
+//#include "timer.h"
 #include "connection/esb.h"
+
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/reboot.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 

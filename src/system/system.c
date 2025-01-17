@@ -1,14 +1,14 @@
-#include "system.h"
+#include "../globals.h"
 
-#include <hal/nrf_gpio.h>
-#include <zephyr/drivers/flash.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
-#include <zephyr/fs/nvs.h>
-#include <zephyr/storage/flash_map.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/flash_map.h>
+#include <zephyr/fs/nvs.h>
+#include <hal/nrf_gpio.h>
 
-#include "../globals.h"
+#include "system.h"
 
 static struct nvs_fs fs;
 

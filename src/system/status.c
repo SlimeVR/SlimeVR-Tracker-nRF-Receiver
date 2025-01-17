@@ -20,11 +20,11 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#include "status.h"
+#include "../globals.h"
 
 #include <zephyr/kernel.h>
 
-#include "../globals.h"
+#include "status.h"
 #include "led.h"
 
 static int status_state = 0;

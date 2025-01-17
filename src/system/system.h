@@ -1,9 +1,6 @@
 #ifndef SLIMENRF_SYSTEM
 #define SLIMENRF_SYSTEM
 
-#include <stddef.h>
-#include <stdint.h>
-
 #include "led.h"
 #include "status.h"
 
