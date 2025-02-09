@@ -13,6 +13,8 @@ FILE(GLOB_RECURSE app_sources src/*.c)
 target_sources(app PRIVATE ${app_sources})
 # NORDIC SDK APP END
 
+target_include_directories(app PRIVATE src)
+
 # Force recompile for updated build timestamp
 add_custom_target(touch_util_h ALL
     COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_SOURCE_DIR}/src/build_defines.h

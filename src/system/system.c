@@ -1,4 +1,4 @@
-#include "../globals.h"
+#include "globals.h"
 
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
