@@ -26,11 +26,27 @@ static int sys_nvs_init(void) {
 	}
 	struct flash_pages_info info;
 	fs.flash_device = NVS_PARTITION_DEVICE;
-	fs.offset = NVS_PARTITION_OFFSET;  // Start NVS FS here
-	flash_get_page_info_by_offs(fs.flash_device, fs.offset, &info);
-	fs.sector_size = info.size;  // Sector size equal to page size
-	fs.sector_count = 4U;  // 4 sectors
-	nvs_mount(&fs);
+	fs.offset = NVS_PARTITION_OFFSET; // starting at NVS_PARTITION_OFFSET
+	if (flash_get_page_info_by_offs(fs.flash_device, fs.offset, &info))
+	{
+		LOG_ERR("Failed to get page info");
+		return 1;
+	}
+	fs.sector_size = info.size; // sector_size equal to the pagesize
+	fs.sector_count = 4U; // 4 sectors
+	int err = nvs_mount(&fs);
+	if (err == -EDEADLK)
+	{
+		LOG_WRN("All sectors closed, erasing all sectors...");
+		err = flash_flatten(fs.flash_device, fs.offset, fs.sector_size * fs.sector_count);
+		if (!err)
+			err = nvs_mount(&fs);
+	}
+	if (err)
+	{
+		LOG_ERR("Failed to mount NVS");
+		return 1;
+	}
 	nvs_init = true;
 	return 0;
 }
