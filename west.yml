@@ -10,6 +10,7 @@ manifest:
       import: true
 
     # SlimeVR-Tracker-nRF-Receiver
+    # Change the below to your repository if you are forking to build your custom firmware
     - name: SlimeVR-Tracker-nRF-Receiver
       url: https://github.com/SlimeVR/SlimeVR-Tracker-nRF-Receiver.git
       path: SlimeVR-Tracker-nRF-Receiver
