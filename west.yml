@@ -1,0 +1,16 @@
+manifest:
+  version: "0.10"
+  projects:
+
+    # nRF-Connect SDK
+    - name: sdk-nrf
+      path: nrf
+      url: https://github.com/nrfconnect/sdk-nrf.git
+      revision: v2.9-branch
+      import: true
+
+    # SlimeVR-Tracker-nRF-Receiver
+    - name: SlimeVR-Tracker-nRF-Receiver
+      url: https://github.com/SlimeVR/SlimeVR-Tracker-nRF-Receiver.git
+      path: SlimeVR-Tracker-nRF-Receiver
+      revision: master
