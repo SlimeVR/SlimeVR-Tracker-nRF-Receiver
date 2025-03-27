@@ -249,9 +249,12 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		if (mag > 0.5f)
 		{
 			LOG_ERR("Detected abnormal rotation");
-			LOG_INF("Tracker ID: %d, address: %012llX, magnitude: %.2f radians", data[1], stored_tracker_addr[i], mag);
+			LOG_INF("Tracker ID: %d", data[1]);
+			LOG_INF("Tracker address: %012llX", stored_tracker_addr[data[1]]);
+			LOG_INF("Packet ID: %d", data[0])
 			LOG_INF("q: %.2f %.2f %.2f %.2f", q[0], q[1], q[2], q[3]);
 			LOG_INF("last_q: %.2f %.2f %.2f %.2f", last_q[0], last_q[1], last_q[2], last_q[3]);
+			LOG_INF("Magnitude: %.2f rad", mag);
 			memcpy(last_q, q, sizeof(q));
 			return;
 		}
