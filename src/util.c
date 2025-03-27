@@ -80,7 +80,7 @@ void q_fem(const float *q, float *out)
 {
 	float w = fabsf(q[0]);
 	float a = 1 - w * w;
-	float inv_sqrt_a = 1/sqrtf(a + EPS); // inversesqrt
+	float inv_sqrt_a = 1/sqrtf(a + (float)EPS); // inversesqrt
 	float k = a * inv_sqrt_a;
 	float atan_term = (2 / M_PI) * atanf(k / w);
 	float sign_w = (q[0] == 0) ? 1 : copysignf(1, q[0]);
@@ -93,7 +93,7 @@ void q_fem(const float *q, float *out)
 void q_iem(const float *v, float *out)
 {
 	float d = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
-	float inv_sqrt_d = 1/sqrtf(d + EPS); // inversesqrt
+	float inv_sqrt_d = 1/sqrtf(d + (float)EPS); // inversesqrt
 	float a = (M_PI / 2) * d * inv_sqrt_d;
 	float s = sinf(a);
 	float k = s * inv_sqrt_d;
