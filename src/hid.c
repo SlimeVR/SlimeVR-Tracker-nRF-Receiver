@@ -216,8 +216,48 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|3	   |id      |svr_stat|status  |resv                                                                                              |rssi    |
 //|255     |id      |addr                                                 |resv                                                                   |
 
+#include "util.h"
+static float last_q_trackers[256][4] = {0};
+
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
+	// discard packets with abnormal rotation // TODO:
+	if (data[0] == 1 || data[0] == 2)
+	{
+		float v[3] = {0};
+		float q[4] = {0};
+		uint16_t *buf = (uint16_t *)&data[2];
+		uint32_t *q_buf = (uint32_t *)&data[5];
+		if (data[0] == 1)
+		{
+			q[0] = FIXED_15_TO_DOUBLE(buf[3]);
+			q[1] = FIXED_15_TO_DOUBLE(buf[0]);
+			q[2] = FIXED_15_TO_DOUBLE(buf[1]);
+			q[3] = FIXED_15_TO_DOUBLE(buf[2]);
+		}
+		else
+		{
+			v[0] = FIXED_10_TO_DOUBLE(*q_buf & 1023);
+			v[1] = FIXED_11_TO_DOUBLE((*q_buf >> 10) & 2047);
+			v[2] = FIXED_11_TO_DOUBLE((*q_buf >> 21) & 2047);
+			for (int i = 0; i < 3; i++)
+				v[i] = v[i] * 2 - 1;
+			q_iem(v, q);
+		}
+		float *last_q = last_q_trackers[data[1]];
+		float mag = q_diff_mag(q, last_q);
+		if (mag > 0.5f)
+		{
+			LOG_ERR("Detected abnormal rotation");
+			LOG_INF("Tracker ID: %d, address: %012llX, magnitude: %.2f radians", data[1], stored_tracker_addr[i], mag);
+			LOG_INF("q: %.2f %.2f %.2f %.2f", q[0], q[1], q[2], q[3]);
+			LOG_INF("last_q: %.2f %.2f %.2f %.2f", last_q[0], last_q[1], last_q[2], last_q[3]);
+			memcpy(last_q, q, sizeof(q));
+			return;
+		}
+		memcpy(last_q, q, sizeof(q));
+	}
+
 	memcpy(&report.data, data, 16); // all data can be passed through
 	if (data[0] != 1) // packet 1 is full precision quat and accel, no room for rssi
 		report.data[15]=rssi;
