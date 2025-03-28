@@ -226,7 +226,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 	{
 		float v[3] = {0};
 		float q[4] = {0};
-		uint16_t *buf = (uint16_t *)&data[2];
+		int16_t *buf = (int16_t *)&data[2];
 		uint32_t *q_buf = (uint32_t *)&data[5];
 		if (data[0] == 1)
 		{
@@ -246,7 +246,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		}
 		float *last_q = last_q_trackers[data[1]];
 		float mag = q_diff_mag(q, last_q);
-		if (mag > 0.5f)
+		if (mag > 0.5f && mag < 6.28f - 0.5f)
 		{
 			LOG_ERR("Detected abnormal rotation");
 			LOG_INF("Tracker ID: %d", data[1]);
