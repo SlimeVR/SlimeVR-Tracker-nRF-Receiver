@@ -158,9 +158,15 @@ static void status_cb(enum usb_dc_status_code status, const uint8_t *param)
 		configured = false;
 		break;
 	case USB_DC_CONFIGURED:
-		if (!configured) {
-			int_in_ready_cb(hdev);
-			configured = true;
+		int configurationIndex = *param;
+		if(configurationIndex == 0) {
+			// from usb_device.c: A configuration index of 0 unconfigures the device.
+			configured = false;
+		} else {
+			if (!configured) {
+				int_in_ready_cb(hdev);
+				configured = true;
+			}
 		}
 		break;
 	case USB_DC_SOF:
