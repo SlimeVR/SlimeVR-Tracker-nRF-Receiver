@@ -70,6 +70,8 @@ void event_handler(struct esb_evt const *event)
 				break;
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
+				if (imu_id >= stored_trackers) // not a stored tracker
+					return;
 				if (discovered_trackers[imu_id] < DETECTION_THRESHOLD) // garbage filtering of nonexistent tracker
 				{
 					discovered_trackers[imu_id]++;
