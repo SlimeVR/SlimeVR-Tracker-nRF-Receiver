@@ -265,7 +265,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 	}
 
 	memcpy(&report.data, data, 16); // all data can be passed through
-	if (data[0] != 1) // packet 1 is full precision quat and accel, no room for rssi
+	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
 		report.data[15]=rssi;
 	// TODO: this sucks
 	for (int i = 0; i < report_count; i++) // replace existing entry instead
