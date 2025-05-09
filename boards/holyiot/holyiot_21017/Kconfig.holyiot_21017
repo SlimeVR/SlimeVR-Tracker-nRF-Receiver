@@ -1,0 +1,48 @@
+# Copyright (c) 2018 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_HOLYIOT_21017
+	select SOC_NRF52840_QIAA
+
+if BOARD_HOLYIOT_21017
+
+config BOARD_HAS_NRF5_BOOTLOADER
+	bool "Board has nRF5 bootloader"
+	default y
+	help
+	  If selected, applications are linked so that they can be loaded by Nordic
+	  nRF5 bootloader.
+
+config BOARD_SERIAL_BACKEND_CDC_ACM
+	bool "USB CDC"
+	default y
+
+config MPSL_FEM_GENERIC_TWO_CTRL_PINS_SUPPORT
+    bool "Use FEM"
+    default y
+    help
+        Use RF front-end module (FEM) is a device that amplifies the RF signal, to increase the range distance, the strength, and the robustness of a link connection.
+
+config BOARD_ENABLE_FEM
+    bool "FEM enabled"
+    default y
+    select MPSL_FEM_GENERIC_TWO_CTRL_PINS_SUPPORT
+    help
+      Enabke front-end module (FEM).
+
+config CONFIG_MPSL
+    bool "Enable MPSL"
+    default true
+    help
+      Enable Nordic Multi Protocol Service Layer
+
+config BOARD_ENABLE_DCDC
+    bool "DCDC mode"
+    select SOC_DCDC_NRF52X
+    default n
+    
+config MPSL_FEM_GENERIC_TWO_CTRL_PINS_SUPPORT
+    bool
+    default y
+
+endif # BOARD_HOLYIOT_21017
