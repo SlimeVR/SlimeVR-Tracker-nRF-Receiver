@@ -204,9 +204,6 @@ SYS_INIT(composite_pre_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
 void usb_init_thread(void)
 {
-	k_msleep(1000);
-	usb_disable();
-	k_msleep(1000); // Wait before enabling USB // TODO: why does it need to wait so long
 	usb_enable(status_cb);
 	k_work_init(&report_send, send_report);
 	usb_enabled = true;
