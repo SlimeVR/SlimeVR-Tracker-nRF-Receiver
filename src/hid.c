@@ -220,7 +220,7 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|255     |id      |addr                                                 |resv                                                                   |
 
 #include "util.h"
-static float last_q_trackers[256] = {0};
+static float last_q_trackers[256][4] = {0};
 static int last_valid_trackers[256] = {0};
 
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
@@ -248,7 +248,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 				v[i] = v[i] * 2 - 1;
 			q_iem(v, q);
 		}
-		float *last_q = &last_q_trackers[data[1]];
+		float *last_q = last_q_trackers[data[1]];
 		float mag = q_diff_mag(q, last_q);
 		if (mag > 0.5f && mag < 6.28f - 0.5f)
 		{
