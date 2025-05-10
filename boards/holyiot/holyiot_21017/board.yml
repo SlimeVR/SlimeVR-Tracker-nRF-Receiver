@@ -1,0 +1,9 @@
+# Copyright (c) 2024 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+board:
+  name: holyiot_21017
+  full_name: holyiot_21017
+  vendor: holyiot
+  socs:
+  - name: nrf52840
