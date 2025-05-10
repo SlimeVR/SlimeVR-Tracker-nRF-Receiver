@@ -204,9 +204,6 @@ SYS_INIT(composite_pre_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
 void usb_init_thread(void)
 {
-	k_msleep(1000);
-	usb_disable();
-	k_msleep(1000); // Wait before enabling USB // TODO: why does it need to wait so long
 	usb_enable(status_cb);
 	k_work_init(&report_send, send_report);
 	usb_enabled = true;
@@ -223,7 +220,8 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|255     |id      |addr                                                 |resv                                                                   |
 
 #include "util.h"
-static float last_q_trackers[256][4] = {0};
+static float last_q_trackers[256] = {0};
+static int last_valid_trackers[256] = {0};
 
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
@@ -250,25 +248,29 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 				v[i] = v[i] * 2 - 1;
 			q_iem(v, q);
 		}
-		float *last_q = last_q_trackers[data[1]];
+		float *last_q = &last_q_trackers[data[1]];
 		float mag = q_diff_mag(q, last_q);
 		if (mag > 0.5f && mag < 6.28f - 0.5f)
 		{
-			LOG_ERR("Detected abnormal rotation");
-			LOG_INF("Tracker ID: %d", data[1]);
-			LOG_INF("Tracker address: %012llX", stored_tracker_addr[data[1]]);
-			LOG_INF("Packet ID: %d", data[0]);
-			LOG_INF("q: %.2f %.2f %.2f %.2f", (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
-			LOG_INF("last_q: %.2f %.2f %.2f %.2f", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3]);
-			LOG_INF("Magnitude: %.2f rad", (double)mag);
-			memcpy(last_q, q, sizeof(q));
+			LOG_ERR("Abnormal rotation for %012llX, ID %d, packet ID %d, mag: %.2f rad, last valid: %d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, last_valid_trackers[data[1]]);
+			printk("quat: %5.2f %5.2f %5.2f %5.2f\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
+			printk("last: %5.2f %5.2f %5.2f %5.2f\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3]);
+			last_valid_trackers[data[1]]++;
+			if (last_valid_trackers[data[1]] > 2) // reset last_q
+			{
+				LOG_WRN("Reset rotation for %012llX, ID %d", stored_tracker_addr[data[1]], data[1]);
+				last_valid_trackers[data[1]] = 0;
+				memcpy(last_q, q, sizeof(q));
+				return;
+			}
 			return;
 		}
+		last_valid_trackers[data[1]] = 0;
 		memcpy(last_q, q, sizeof(q));
 	}
 
 	memcpy(&report.data, data, 16); // all data can be passed through
-	if (data[0] != 1) // packet 1 is full precision quat and accel, no room for rssi
+	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
 		report.data[15]=rssi;
 	// TODO: this sucks
 	for (int i = 0; i < report_count; i++) // replace existing entry instead
