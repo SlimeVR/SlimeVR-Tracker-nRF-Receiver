@@ -217,6 +217,7 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|1       |id      |q0               |q1               |q2               |q3               |a0               |a1               |a2               |
 //|2       |id      |batt    |batt_v  |temp    |q_buf                              |a0               |a1               |a2               |rssi    |
 //|3	   |id      |svr_stat|status  |resv                                                                                              |rssi    |
+//|4       |id      |q0               |q1               |q2               |q3               |m0               |m1               |m2               |
 //|255     |id      |addr                                                 |resv                                                                   |
 
 #include "util.h"
@@ -226,13 +227,13 @@ static int last_valid_trackers[256] = {0};
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
 	// discard packets with abnormal rotation // TODO:
-	if (data[0] == 1 || data[0] == 2)
+	if (data[0] == 1 || data[0] == 2 || data[0] == 4)
 	{
 		float v[3] = {0};
 		float q[4] = {0};
 		int16_t *buf = (int16_t *)&data[2];
 		uint32_t *q_buf = (uint32_t *)&data[5];
-		if (data[0] == 1)
+		if (data[0] == 1 || data[0] == 4)
 		{
 			q[0] = FIXED_15_TO_DOUBLE(buf[3]);
 			q[1] = FIXED_15_TO_DOUBLE(buf[0]);
