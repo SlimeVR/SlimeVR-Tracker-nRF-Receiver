@@ -47,6 +47,9 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_packet_filter_thread(void);
 K_THREAD_DEFINE(esb_packet_filter_thread_id, 256, esb_packet_filter_thread, NULL, NULL, NULL, 6, 0, 0);
 
+static void esb_thread(void);
+K_THREAD_DEFINE(esb_thread_id, 512, esb_thread, NULL, NULL, NULL, 6, 0, 0);
+
 void event_handler(struct esb_evt const *event)
 {
 	switch (event->evt_id)
@@ -206,6 +209,13 @@ int esb_initialize(bool tx)
 	return 0;
 }
 
+static void esb_deinitialize(void)
+{
+	if (esb_initialized)
+		esb_disable();
+	esb_initialized = false;
+}
+
 inline void esb_set_addr_discovery(void)
 {
 	memcpy(base_addr_0, discovery_base_addr_0, sizeof(base_addr_0));
@@ -237,6 +247,7 @@ inline void esb_set_addr_paired(void)
 	memcpy(addr_prefix, addr_buffer + 8, sizeof(addr_prefix));
 }
 
+static bool esb_pairing = false;
 static bool esb_paired = false;
 
 void esb_pair(void)
@@ -250,7 +261,8 @@ void esb_pair(void)
 	memcpy(&tx_payload_pair.data[2], addr, 6);
 	LOG_INF("Device address: %012llX", *addr & 0xFFFFFFFFFFFF);
 	set_led(SYS_LED_PATTERN_SHORT, SYS_LED_PRIORITY_CONNECTION);
-	while (true) // Run indefinitely (User must reset/unplug dongle)
+	esb_pairing = true;
+	while (esb_pairing)
 	{
 		uint64_t found_addr = (*(uint64_t *)pairing_buf >> 16) & 0xFFFFFFFFFFFF;
 		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
@@ -284,6 +296,28 @@ void esb_pair(void)
 		//esb_write_payload(&tx_payload_pair); // Add to TX buffer
 		k_msleep(10);
 	}
+	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_CONNECTION);
+	esb_disable();
+	esb_receive();
+}
+
+void esb_reset_pair(void)
+{
+	esb_deinitialize(); // make sure esb is off
+	esb_paired = false;
+}
+
+void esb_finish_pair(void)
+{
+	esb_pairing = false;
+}
+
+void esb_clear(void)
+{
+	stored_trackers = 0;
+	sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
+	LOG_INF("NVS Reset");
+	esb_reset_pair();
 }
 
 // TODO:
@@ -307,11 +341,41 @@ void esb_receive(void)
 static void esb_packet_filter_thread(void)
 {
 	memset(discovered_trackers, 0, sizeof(discovered_trackers));
-	while (true) // reset count if its not above threshold
+	while (1) // reset count if its not above threshold
 	{
 		k_msleep(1000);
 		for (int i = 0; i < 256; i++)
 			if (discovered_trackers[i] < DETECTION_THRESHOLD)
 				discovered_trackers[i] = 0;
+	}
+}
+
+static void esb_thread(void)
+{
+	clocks_start();
+
+	sys_read(STORED_TRACKERS, &stored_trackers, sizeof(stored_trackers));
+	if (stored_trackers)
+		esb_paired = true;
+	for (int i = 0; i < stored_trackers; i++)
+		sys_read(STORED_ADDR_0+i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
+	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
+
+	if (esb_paired)
+	{
+		esb_receive();
+		esb_initialize(false);
+		esb_start_rx();
+	}
+
+	while (1)
+	{
+		if (!esb_paired)
+		{
+			esb_pair();
+			esb_initialize(false);
+			esb_start_rx();
+		}
+		k_msleep(100);
 	}
 }

@@ -33,6 +33,9 @@ void esb_set_addr_discovery(void);
 void esb_set_addr_paired(void);
 
 void esb_pair(void);
+void esb_reset_pair(void);
+void esb_finish_pair(void);
+void esb_clear(void);
 void esb_write_sync(uint16_t led_clock);
 void esb_receive(void);
 

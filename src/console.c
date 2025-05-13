@@ -31,6 +31,7 @@
 #include <zephyr/console/console.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/logging/log_ctrl.h>
+#include "esb.h"
 
 #include <ctype.h>
 
@@ -171,6 +172,7 @@ static void console_thread(void)
 	printk("list                         Get paired devices\n");
 	printk("reboot                       Soft reset the device\n");
 	printk("pair                         Enter pairing mode\n");
+	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
 
 	uint8_t command_info[] = "info";
@@ -178,6 +180,7 @@ static void console_thread(void)
 	uint8_t command_list[] = "list";
 	uint8_t command_reboot[] = "reboot";
 	uint8_t command_pair[] = "pair";
+	uint8_t command_exit[] = "exit";
 	uint8_t command_clear[] = "clear";
 
 #if DFU_EXISTS
@@ -215,17 +218,15 @@ static void console_thread(void)
 		}
 		else if (memcmp(line, command_pair, sizeof(command_pair)) == 0)
 		{
-			skip_dfu();
-			reboot_counter_write(101);
-			k_msleep(1);
-			sys_reboot(SYS_REBOOT_WARM);
+			esb_reset_pair();
+		}
+		else if (memcmp(line, command_exit, sizeof(command_exit)) == 0)
+		{
+			esb_finish_pair();
 		}
 		else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) 
 		{
-			skip_dfu();
-			reboot_counter_write(102);
-			k_msleep(1);
-			sys_reboot(SYS_REBOOT_WARM);
+			esb_clear();
 		}
 #if DFU_EXISTS
 		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0)
