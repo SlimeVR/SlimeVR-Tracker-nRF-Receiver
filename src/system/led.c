@@ -114,30 +114,12 @@ static void led_pin_reset(void)
 static void led_suspend(void)
 {
 	LOG_DBG("led_suspend");
-#ifdef PWM_LED_EXISTS
-	pm_device_action_run(pwm_led.dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
-#ifdef PWM_LED1_EXISTS
-	pm_device_action_run(pwm_led1.dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
-#ifdef PWM_LED2_EXISTS
-	pm_device_action_run(pwm_led2.dev, PM_DEVICE_ACTION_SUSPEND);
-#endif
 	led_pin_reset();
 }
 
 static void led_resume(void)
 {
 	LOG_DBG("led_resume");
-#ifdef PWM_LED_EXISTS
-	pm_device_action_run(pwm_led.dev, PM_DEVICE_ACTION_RESUME);
-#endif
-#ifdef PWM_LED1_EXISTS
-	pm_device_action_run(pwm_led1.dev, PM_DEVICE_ACTION_RESUME);
-#endif
-#ifdef PWM_LED2_EXISTS
-	pm_device_action_run(pwm_led2.dev, PM_DEVICE_ACTION_RESUME);
-#endif
 	led_pin_init();
 }
 
