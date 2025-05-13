@@ -48,7 +48,7 @@ static void esb_packet_filter_thread(void);
 K_THREAD_DEFINE(esb_packet_filter_thread_id, 256, esb_packet_filter_thread, NULL, NULL, NULL, 6, 0, 0);
 
 static void esb_thread(void);
-K_THREAD_DEFINE(esb_thread_id, 512, esb_thread, NULL, NULL, NULL, 6, 0, 0);
+K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
 void event_handler(struct esb_evt const *event)
 {

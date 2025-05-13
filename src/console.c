@@ -31,7 +31,7 @@
 #include <zephyr/console/console.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/logging/log_ctrl.h>
-#include "esb.h"
+#include "connection/esb.h"
 
 #include <ctype.h>
 
