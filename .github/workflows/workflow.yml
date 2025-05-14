@@ -85,6 +85,11 @@ jobs:
           tar xf zephyr-sdk-0.17.0_linux-x86_64_minimal.tar.xz -C ~/
           ~/zephyr-sdk-0.17.0/setup.sh -c -t arm-zephyr-eabi
 
+      - name: 📂 Cloning Triggered Repository/Branch
+        run: |
+          cd zephyr-workspace
+          git clone --single-branch --recurse-submodules -b $GITHUB_REF_NAME $GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git
+
       - name: ♻️ Initialize Zephyr Workspace
         # Set up the Zephyr workspace and install the Python dependencies
         run: |
@@ -109,18 +114,18 @@ jobs:
           sed -i "s/$find/$replace/g" zephyr/drivers/retained_mem/retained_mem_nrf_ram_ctrl.c
           sudo rm -rf Releases
           mkdir Releases
-          sudo rm -rf SlimeVR-Tracker-nRF-Receiver/build
-          mkdir SlimeVR-Tracker-nRF-Receiver/build
+          sudo rm -rf ${{ github.event.repository.name }}/build
+          mkdir ${{ github.event.repository.name }}/build
 
           west build \
               --board ${{ matrix.boards.boardname }} \
-              --pristine=always SlimeVR-Tracker-nRF-Receiver \
-              --build-dir SlimeVR-Tracker-nRF-Receiver/build \
+              --pristine=always ${{ github.event.repository.name }} \
+              --build-dir ${{ github.event.repository.name }}/build \
               -- \
               -DNCS_TOOLCHAIN_VERSION=NONE \
-              -DBOARD_ROOT=../SlimeVR-Tracker-nRF-Receiver
+              -DBOARD_ROOT=../${{ github.event.repository.name }}
 
-          mv SlimeVR-Tracker-nRF-Receiver/build/SlimeVR-Tracker-nRF-Receiver/zephyr/zephyr.${{ matrix.boards.fileformat }} Releases/${{ matrix.boards.filename }}
+          mv ${{ github.event.repository.name }}/build/${{ github.event.repository.name }}/zephyr/zephyr.${{ matrix.boards.fileformat }} Releases/${{ matrix.boards.filename }}
 
       - name: 💾 Upload Artifact - ${{ matrix.boards.boardname }}
         if: always()
