@@ -20,12 +20,12 @@ jobs:
     strategy:
       matrix:
         boards: [
-                  {boardname: "nrf52840dongle/nrf52840", fileformat: "hex", filename: "SlimeNRF_Nordic_eByte_Dongle_Receiver.hex"}, 
-                  {boardname: "holyiot_21017/nrf52840", fileformat: "hex", filename: "SlimeNRF_Holyiot_Dongle_Receiver.hex"}, 
-                  {boardname: "supermini_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_SuperMini_Receiver.uf2"}, 
-                  {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver.uf2"}, 
-                  {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver.uf2"}, 
-                  {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver.hex"}, 
+                  {boardname: "nrf52840dongle/nrf52840", fileformat: "hex", filename: "SlimeNRF_Nordic_eByte_Dongle_Receiver"}, 
+                  {boardname: "holyiot_21017/nrf52840", fileformat: "hex", filename: "SlimeNRF_Holyiot_Dongle_Receiver"}, 
+                  {boardname: "supermini_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_SuperMini_Receiver"}, 
+                  {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver"}, 
+                  {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver"}, 
+                  {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver"}, 
                 ]
     if: always()
     runs-on: ubuntu-latest
@@ -125,13 +125,13 @@ jobs:
               -DNCS_TOOLCHAIN_VERSION=NONE \
               -DBOARD_ROOT=../${{ github.event.repository.name }}
 
-          mv ${{ github.event.repository.name }}/build/${{ github.event.repository.name }}/zephyr/zephyr.${{ matrix.boards.fileformat }} Releases/${{ matrix.boards.filename }}
+          mv ${{ github.event.repository.name }}/build/${{ github.event.repository.name }}/zephyr/zephyr.${{ matrix.boards.fileformat }} Releases/${{ matrix.boards.filename }}.${{ matrix.boards.fileformat }}
 
       - name: 💾 Upload Artifact - ${{ matrix.boards.boardname }}
         if: always()
         uses: actions/upload-artifact@v4
         with:
           # Artifact name
-          name: ${{ matrix.boards.filename }}
+          name: ${{ matrix.boards.filename }}.${{ matrix.boards.fileformat }}
           # A file, directory or wildcard pattern that describes what to upload
-          path: zephyr-workspace/Releases/${{ matrix.boards.filename }}
+          path: zephyr-workspace/Releases/${{ matrix.boards.filename }}.${{ matrix.boards.fileformat }}
