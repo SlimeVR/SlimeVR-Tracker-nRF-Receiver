@@ -271,9 +271,9 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 			// HWID, ID, packet type, rotation difference (rad), last valid packet
 			LOG_ERR("Abnormal rot. %012llX i%d p%d m%.2f/%.2f v%d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, (double)mag_cur, last_valid_trackers[data[1]]);
 			// decoded quat, packet type, q_buf
-			printk("a: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3], data[0], *q_buf);
-			printk("b: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)cur_q[0], (double)cur_q[1], (double)cur_q[2], (double)cur_q[3], *cur_p, *cur_v);
-			printk("c: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3], *last_p, *last_v);
+			printk("a: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3], data[0], *q_buf);
+			printk("b: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)cur_q[0], (double)cur_q[1], (double)cur_q[2], (double)cur_q[3], *cur_p, *cur_v);
+			printk("c: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3], *last_p, *last_v);
 			last_valid_trackers[data[1]]++;
 			memcpy(cur_q, q, sizeof(q));
 			*cur_v = *q_buf;
