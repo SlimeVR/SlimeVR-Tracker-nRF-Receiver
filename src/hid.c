@@ -221,8 +221,15 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|255     |id      |addr                                                 |resv                                                                   |
 
 #include "util.h"
+// last valid data
 static float last_q_trackers[256][4] = {0};
+static uint32_t last_v_trackers[256] = {0};
+static uint8_t last_p_trackers[256] = {0};
 static int last_valid_trackers[256] = {0};
+// last received data
+static float cur_q_trackers[256][4] = {0};
+static uint32_t cur_v_trackers[256] = {0};
+static uint8_t cur_p_trackers[256] = {0};
 
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
@@ -250,24 +257,45 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 			q_iem(v, q);
 		}
 		float *last_q = last_q_trackers[data[1]];
-		float mag = q_diff_mag(q, last_q);
-		if (mag > 0.5f && mag < 6.28f - 0.5f)
+		uint32_t *last_v = &last_v_trackers[data[1]];
+		uint8_t *last_p = &last_p_trackers[data[1]];
+		float *cur_q = cur_q_trackers[data[1]];
+		uint32_t *cur_v = &cur_v_trackers[data[1]];
+		uint8_t *cur_p = &cur_p_trackers[data[1]];
+		float mag = q_diff_mag(q, last_q); // difference between last valid
+		float mag_cur = q_diff_mag(q, cur_q); // difference between last received
+		bool mag_invalid = mag > 0.5f && mag < 6.28f - 0.5f; // possibly invalid rotation
+		bool mag_cur_invalid = mag_cur > 0.5f && mag_cur < 6.28f - 0.5f; // possibly inconsistent rotation
+		if (mag_invalid)
 		{
-			LOG_ERR("Abnormal rotation for %012llX, ID %d, packet ID %d, mag: %.2f rad, last valid: %d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, last_valid_trackers[data[1]]);
-			printk("quat: %5.2f %5.2f %5.2f %5.2f\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
-			printk("last: %5.2f %5.2f %5.2f %5.2f\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3]);
+			// HWID, ID, packet type, rotation difference (rad), last valid packet
+			LOG_ERR("Abnormal rot. %012llX i%d p%d m%.2f/%.2f v%d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, (double)mag_cur, last_valid_trackers[data[1]]);
+			// decoded quat, packet type, q_buf
+			printk("a: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3], data[0], *q_buf);
+			printk("b: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)cur_q[0], (double)cur_q[1], (double)cur_q[2], (double)cur_q[3], *cur_p, *cur_v);
+			printk("c: %5.2f %5.2f %5.2f %5.2f p%d:%08lX\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3], *last_p, *last_v);
 			last_valid_trackers[data[1]]++;
-			if (last_valid_trackers[data[1]] > 2) // reset last_q
+			memcpy(cur_q, q, sizeof(q));
+			*cur_v = *q_buf;
+			*cur_p = data[0];
+			if (!mag_cur_invalid && last_valid_trackers[data[1]] > 2) // reset last_q
 			{
 				LOG_WRN("Reset rotation for %012llX, ID %d", stored_tracker_addr[data[1]], data[1]);
 				last_valid_trackers[data[1]] = 0;
 				memcpy(last_q, q, sizeof(q));
+				*last_v = *q_buf;
+				*last_p = data[0];
 				return;
 			}
 			return;
 		}
 		last_valid_trackers[data[1]] = 0;
+		memcpy(cur_q, q, sizeof(q));
+		*cur_v = *q_buf;
+		*cur_p = data[0];
 		memcpy(last_q, q, sizeof(q));
+		*last_v = *q_buf;
+		*last_p = data[0];
 	}
 
 	memcpy(&report.data, data, 16); // all data can be passed through
