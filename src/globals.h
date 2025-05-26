@@ -27,7 +27,11 @@
 
 #include "retained.h"
 
+#ifndef CONFIG_SOC_NRF52820
 #define MAX_TRACKERS 256
+#else
+#define MAX_TRACKERS 24
+#endif
 #define DETECTION_THRESHOLD 16
 
 // TODO: move to esb
