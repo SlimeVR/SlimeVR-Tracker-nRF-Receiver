@@ -1,7 +1,7 @@
 # Receiver firmware for SlimeNRF
 Firmware for Nordic nRF52833 / nRF52840 SoC.
 
-Please see https://docs.shinebright.dev/diy/smol-slime.html for more information and usage.
+Please see https://docs.slimevr.dev/diy/smol-slime.html for more information and usage.
 
 ## License
 Unless otherwise specified, all code in this repository is dual-licensed under either:
