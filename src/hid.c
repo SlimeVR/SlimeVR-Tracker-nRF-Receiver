@@ -34,7 +34,7 @@ static struct tracker_report {
 	.data = {0}
 };;
 
-uint8_t reports[256*sizeof(report)];
+uint8_t reports[MAX_TRACKERS * sizeof(report)];
 uint8_t report_count = 0;
 uint8_t report_sent = 0;
 
@@ -220,19 +220,22 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 //|4       |id      |q0               |q1               |q2               |q3               |m0               |m1               |m2               |
 //|255     |id      |addr                                                 |resv                                                                   |
 
+#ifndef CONFIG_SOC_NRF52820
 #include "util.h"
 // last valid data
-static float last_q_trackers[256][4] = {0};
-static uint32_t last_v_trackers[256] = {0};
-static uint8_t last_p_trackers[256] = {0};
-static int last_valid_trackers[256] = {0};
+static float last_q_trackers[MAX_TRACKERS][4] = {0};
+static uint32_t last_v_trackers[MAX_TRACKERS] = {0};
+static uint8_t last_p_trackers[MAX_TRACKERS] = {0};
+static int last_valid_trackers[MAX_TRACKERS] = {0};
 // last received data
-static float cur_q_trackers[256][4] = {0};
-static uint32_t cur_v_trackers[256] = {0};
-static uint8_t cur_p_trackers[256] = {0};
+static float cur_q_trackers[MAX_TRACKERS][4] = {0};
+static uint32_t cur_v_trackers[MAX_TRACKERS] = {0};
+static uint8_t cur_p_trackers[MAX_TRACKERS] = {0};
+#endif
 
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
+#ifndef CONFIG_SOC_NRF52820
 	// discard packets with abnormal rotation // TODO:
 	if (data[0] == 1 || data[0] == 2 || data[0] == 4)
 	{
@@ -297,10 +300,11 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		*last_v = *q_buf;
 		*last_p = data[0];
 	}
+#endif
 
 	memcpy(&report.data, data, 16); // all data can be passed through
 	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
-		report.data[15]=rssi;
+		report.data[15] = rssi;
 	// TODO: this sucks
 	for (int i = 0; i < report_count; i++) // replace existing entry instead
 	{

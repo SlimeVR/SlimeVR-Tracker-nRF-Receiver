@@ -40,7 +40,7 @@ static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0);
 
 uint8_t pairing_buf[8] = {0};
-static uint8_t discovered_trackers[256] = {0};
+static uint8_t discovered_trackers[MAX_TRACKERS] = {0};
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
@@ -344,7 +344,7 @@ static void esb_packet_filter_thread(void)
 	while (1) // reset count if its not above threshold
 	{
 		k_msleep(1000);
-		for (int i = 0; i < 256; i++)
+		for (int i = 0; i < MAX_TRACKERS; i++)
 			if (discovered_trackers[i] < DETECTION_THRESHOLD)
 				discovered_trackers[i] = 0;
 	}
