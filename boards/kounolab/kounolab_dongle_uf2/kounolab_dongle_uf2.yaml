@@ -6,8 +6,8 @@ name: kounolab_dongle_uf2
 vendor: kounolab
 type: mcu
 arch: arm
-ram: 256
-flash: 1024
+ram: 32
+flash: 256
 toolchain:
   - zephyr
   - gnuarmemb
