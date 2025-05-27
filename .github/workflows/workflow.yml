@@ -26,7 +26,7 @@ jobs:
                   {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver"}, 
                   {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver"}, 
                   {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver"}, 
-                  {boardname: "nekovr_dongle_v2_uf2/nrf52840", fileformat: "hex", filename: "SlimeNRF_NekoVR_Dongle_Receiver"}, 
+                  {boardname: "nekovr_dongle_v2/nrf52840", fileformat: "hex", filename: "SlimeNRF_NekoVR_Dongle_V2_Receiver"}, 
                 ]
     if: always()
     runs-on: ubuntu-latest
