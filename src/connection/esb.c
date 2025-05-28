@@ -281,7 +281,7 @@ void esb_pair(void)
 		{
 			LOG_INF("Added device on id %d with address %012llX", stored_trackers, found_addr);
 			stored_tracker_addr[stored_trackers] = found_addr;
-			sys_write(STORED_ADDR_0+stored_trackers, NULL, &stored_tracker_addr[stored_trackers], sizeof(stored_tracker_addr[0]));
+			sys_write(STORED_ADDR_0 + stored_trackers, NULL, &stored_tracker_addr[stored_trackers], sizeof(stored_tracker_addr[0]));
 			stored_trackers++;
 			sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
@@ -358,7 +358,7 @@ static void esb_thread(void)
 	if (stored_trackers)
 		esb_paired = true;
 	for (int i = 0; i < stored_trackers; i++)
-		sys_read(STORED_ADDR_0+i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
+		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
 
 	if (esb_paired)
