@@ -250,6 +250,46 @@ inline void esb_set_addr_paired(void)
 static bool esb_pairing = false;
 static bool esb_paired = false;
 
+void esb_add_pair(uint64_t addr, bool checksum)
+{
+	int id = stored_trackers;
+	if (checksum)
+	{
+		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+		{
+			if (addr != 0 && stored_tracker_addr[i] == addr)
+			{
+				id = i;
+			}
+		}
+	}
+	if (id == stored_trackers)
+	{
+		LOG_INF("Added device on id %d with address %012llX", id, addr);
+		stored_tracker_addr[id] = addr;
+		sys_write(STORED_ADDR_0 + id, NULL, &stored_tracker_addr[id], sizeof(stored_tracker_addr[0]));
+		stored_trackers++;
+		sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
+	}
+	else
+	{
+		LOG_INF("Device already stored with id %d", id);
+	}
+	if (checksum)
+	{
+		uint8_t buf[6] = {0};
+		memcpy(buf, &addr, 6);
+		uint8_t checksum = crc8_ccitt(0x07, buf, 6);
+		if (checksum == 0)
+			checksum = 8;
+		uint64_t *receiver_addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet
+		addr = (*receiver_addr & 0xFFFFFFFFFFFF) << 16;
+		addr |= checksum; // Add checksum to the address
+		addr |= (uint64_t)id << 8; // Add tracker id to the address
+		LOG_INF("Pair the device with %016llX", addr);
+	}
+}
+
 void esb_pair(void)
 {
 	LOG_INF("Pairing");
@@ -279,11 +319,7 @@ void esb_pair(void)
 			checksum = 8;
 		if (checksum == pairing_buf[0] && found_addr != 0 && send_tracker_id == stored_trackers && stored_trackers < MAX_TRACKERS) // New device, add to NVS
 		{
-			LOG_INF("Added device on id %d with address %012llX", stored_trackers, found_addr);
-			stored_tracker_addr[stored_trackers] = found_addr;
-			sys_write(STORED_ADDR_0 + stored_trackers, NULL, &stored_tracker_addr[stored_trackers], sizeof(stored_tracker_addr[0]));
-			stored_trackers++;
-			sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
+			esb_add_pair(found_addr, false);
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 		}
 		if (checksum == pairing_buf[0] && send_tracker_id < MAX_TRACKERS) // Make sure the dongle is not full
