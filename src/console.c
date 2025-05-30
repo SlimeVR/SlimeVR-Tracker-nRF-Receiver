@@ -34,6 +34,7 @@
 #include "connection/esb.h"
 
 #include <ctype.h>
+#include <stdlib.h>
 
 #define DFU_DBL_RESET_MEM 0x20007F7C
 #define DFU_DBL_RESET_APP 0x4ee5677e
@@ -171,6 +172,7 @@ static void console_thread(void)
 	printk("uptime                       Get device uptime\n");
 	printk("list                         Get paired devices\n");
 	printk("reboot                       Soft reset the device\n");
+	printk("add <address>                Manually add a device\n");
 	printk("pair                         Enter pairing mode\n");
 	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
@@ -179,6 +181,7 @@ static void console_thread(void)
 	uint8_t command_uptime[] = "uptime";
 	uint8_t command_list[] = "list";
 	uint8_t command_reboot[] = "reboot";
+	uint8_t command_add[] = "add";
 	uint8_t command_pair[] = "pair";
 	uint8_t command_exit[] = "exit";
 	uint8_t command_clear[] = "clear";
@@ -216,6 +219,16 @@ static void console_thread(void)
 		else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0)
 		{
 			print_uptime();
+		}
+		else if (memcmp(line, command_add, sizeof(command_add)) == 0)
+		{
+			uint64_t addr = strtoull(arg, NULL, 16);
+			uint8_t buf[13];
+			snprintk(buf, 13, "%012llx", addr);
+			if (addr != 0 && memcmp(buf, arg, 13) == 0)
+				esb_add_pair(addr, true);
+			else
+				printk("Invalid address\n");
 		}
 		else if (memcmp(line, command_list, sizeof(command_list)) == 0)
 		{
