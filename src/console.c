@@ -195,8 +195,18 @@ static void console_thread(void)
 
 	while (1) {
 		uint8_t *line = console_getline();
-		for (uint8_t *p = line; *p; ++p) {
+		uint8_t *arg = NULL;
+		for (uint8_t *p = line; *p; ++p)
+		{
 			*p = tolower(*p);
+			if (*p == ' ' && !arg)
+			{
+				*p = 0;
+				p++;
+				*p = tolower(*p);
+				if (*p)
+					arg = p;
+			}
 		}
 
 		if (memcmp(line, command_info, sizeof(command_info)) == 0)
