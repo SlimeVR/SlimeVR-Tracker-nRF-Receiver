@@ -173,6 +173,7 @@ static void console_thread(void)
 	printk("list                         Get paired devices\n");
 	printk("reboot                       Soft reset the device\n");
 	printk("add <address>                Manually add a device\n");
+	printk("remove                       Remove last device\n");
 	printk("pair                         Enter pairing mode\n");
 	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
@@ -182,6 +183,7 @@ static void console_thread(void)
 	uint8_t command_list[] = "list";
 	uint8_t command_reboot[] = "reboot";
 	uint8_t command_add[] = "add";
+	uint8_t command_remove[] = "remove";
 	uint8_t command_pair[] = "pair";
 	uint8_t command_exit[] = "exit";
 	uint8_t command_clear[] = "clear";
@@ -229,6 +231,10 @@ static void console_thread(void)
 				esb_add_pair(addr, true);
 			else
 				printk("Invalid address\n");
+		}
+		else if (memcmp(line, command_remove, sizeof(command_remove)) == 0)
+		{
+			esb_pop_pair();
 		}
 		else if (memcmp(line, command_list, sizeof(command_list)) == 0)
 		{

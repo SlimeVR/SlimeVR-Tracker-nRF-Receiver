@@ -290,6 +290,20 @@ void esb_add_pair(uint64_t addr, bool checksum)
 	}
 }
 
+void esb_pop_pair(void)
+{
+	if (stored_trackers > 0)
+	{
+		stored_trackers--;
+		sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
+		LOG_INF("Removed device on id %d with address %012llX", stored_trackers, stored_tracker_addr[stored_trackers]);
+	}
+	else
+	{
+		LOG_WRN("No devices to remove");
+	}
+}
+
 void esb_pair(void)
 {
 	LOG_INF("Pairing");
