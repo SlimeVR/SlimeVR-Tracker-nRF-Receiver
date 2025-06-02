@@ -143,7 +143,7 @@ static void led_resume(void)
 
 #ifdef LED_RGB_COLOR
 static int led_pwm_period[4][3] = {
-	{4000, 6000, 0}, // Default
+	{CONFIG_LED_DEFAULT_COLOR_R, CONFIG_LED_DEFAULT_COLOR_G, CONFIG_LED_DEFAULT_COLOR_B}, // Default
 	{0, 10000, 0}, // Success
 	{10000, 0, 0}, // Error
 	{8000, 2000, 0}, // Charging
@@ -157,7 +157,7 @@ static int led_pwm_period[4][3] = {
 };
 #elif defined(LED_RG_COLOR)
 static int led_pwm_period[4][2] = {
-	{4000, 6000}, // Default
+	{CONFIG_LED_DEFAULT_COLOR_R, CONFIG_LED_DEFAULT_COLOR_G}, // Default
 	{0, 10000}, // Success
 	{10000, 0}, // Error
 	{8000, 2000}, // Charging
