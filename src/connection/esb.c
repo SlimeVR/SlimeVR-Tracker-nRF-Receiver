@@ -212,7 +212,11 @@ int esb_initialize(bool tx)
 static void esb_deinitialize(void)
 {
 	if (esb_initialized)
+	{
+		esb_initialized = false;
+		k_msleep(10); // wait for pending transmissions
 		esb_disable();
+	}
 	esb_initialized = false;
 }
 
