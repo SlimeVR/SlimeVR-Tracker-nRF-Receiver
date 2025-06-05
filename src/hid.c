@@ -98,7 +98,7 @@ static void send_report(struct k_work *work)
 		}
 		report_sent += report_count;
 		report_sent += 3; // this is a hack to make sure the ep isnt reading the same bits as trackers write to
-		if (report_sent > 128) report_sent = 0; // an attempt to make ringbuffer so the ep isnt reading the same bits as trackers write to
+		if (report_sent > MAX_TRACKERS / 2) report_sent = 0; // an attempt to make ringbuffer so the ep isnt reading the same bits as trackers write to // TODO: might be too small!
 		report_count = 0;
 		if (ret != 0) {
 			/*
