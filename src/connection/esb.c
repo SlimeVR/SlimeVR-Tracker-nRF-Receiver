@@ -221,6 +221,11 @@ static void esb_deinitialize(void)
 		esb_initialized = false;
 		LOG_INF("Deinitializing ESB");
 		k_msleep(10); // wait for pending transmissions
+		if (esb_initialized)
+		{
+			LOG_INF("ESB denitialize cancelled");
+			return;
+		}
 		esb_disable();
 	}
 	esb_initialized = false;
