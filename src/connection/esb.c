@@ -61,15 +61,16 @@ void event_handler(struct esb_evt const *event)
 		LOG_DBG("TX FAILED");
 		break;
 	case ESB_EVENT_RX_RECEIVED:
-	// make tx payload for ack here
-		if (!esb_read_rx_payload(&rx_payload)) // zero, rx success
+	// TODO: make tx payload for ack here
+		int err = esb_read_rx_payload(&rx_payload);
+		if (!err) // zero, rx success
 		{
 			switch (rx_payload.length)
 			{
 			case 8:
 				LOG_INF("RX Pairing Packet");
 				memcpy(pairing_buf, rx_payload.data, 8);
-				esb_write_payload(&tx_payload_pair); // Add to TX buffer
+				esb_write_payload(&tx_payload_pair); // Add to TX buffer // TODO: delayed by several packets
 				break;
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
@@ -90,7 +91,7 @@ void event_handler(struct esb_evt const *event)
 		}
 		else
 		{
-			LOG_ERR("Error while reading rx packet");
+			LOG_ERR("Error while reading rx packet: %d", err);
 		}
 		break;
 	}
@@ -150,6 +151,8 @@ static bool esb_initialized = false;
 
 int esb_initialize(bool tx)
 {
+	if (esb_initialized)
+		LOG_WRN("ESB already initialized");
 	int err;
 
 	struct esb_config config = ESB_DEFAULT_CONFIG;
@@ -187,6 +190,7 @@ int esb_initialize(bool tx)
 	NRF_RADIO->MODECNF0 |= RADIO_MODECNF0_RU_Fast << RADIO_MODECNF0_RU_Pos;
 	// nrf_radio_modecnf0_set(NRF_RADIO, true, 0);
 
+	LOG_INF("Initializing ESB, %sX mode", tx ? "T" : "R");
 	err = esb_init(&config);
 
 	if (!err)
@@ -211,9 +215,11 @@ int esb_initialize(bool tx)
 
 static void esb_deinitialize(void)
 {
+	LOG_INF("ESB deinitialize requested");
 	if (esb_initialized)
 	{
 		esb_initialized = false;
+		LOG_INF("Deinitializing ESB");
 		k_msleep(10); // wait for pending transmissions
 		esb_disable();
 	}
