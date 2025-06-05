@@ -322,6 +322,11 @@ void esb_pair(void)
 	esb_pairing = true;
 	while (esb_pairing)
 	{
+		if (!esb_initialized)
+		{
+			esb_initialize(false);
+			esb_start_rx();
+		}
 		uint64_t found_addr = (*(uint64_t *)pairing_buf >> 16) & 0xFFFFFFFFFFFF;
 		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
 		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
@@ -351,8 +356,7 @@ void esb_pair(void)
 		k_msleep(10);
 	}
 	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_CONNECTION);
-	esb_disable();
-	esb_receive();
+	esb_deinitialize();
 }
 
 void esb_reset_pair(void)
@@ -427,6 +431,7 @@ static void esb_thread(void)
 		if (!esb_paired)
 		{
 			esb_pair();
+			esb_receive();
 			esb_initialize(false);
 			esb_start_rx();
 		}
