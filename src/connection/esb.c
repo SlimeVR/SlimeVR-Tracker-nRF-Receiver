@@ -170,6 +170,7 @@ int esb_initialize(bool tx)
 		config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
+//		config.use_fast_ramp_up = true;
 	}
 	else
 	{
@@ -184,11 +185,8 @@ int esb_initialize(bool tx)
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
+//		config.use_fast_ramp_up = true;
 	}
-
-	// Fast startup mode
-	NRF_RADIO->MODECNF0 |= RADIO_MODECNF0_RU_Fast << RADIO_MODECNF0_RU_Pos;
-	// nrf_radio_modecnf0_set(NRF_RADIO, true, 0);
 
 	LOG_INF("Initializing ESB, %sX mode", tx ? "T" : "R");
 	err = esb_init(&config);
