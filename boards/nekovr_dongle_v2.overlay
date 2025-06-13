@@ -1,0 +1,15 @@
+/ {
+
+	zephyr,user {
+		led-gpios = <&gpio0 27 (GPIO_OPEN_DRAIN|GPIO_ACTIVE_LOW)>;
+	};
+
+};
+
+&cryptocell {
+	status = "disabled";
+};
+
+&nfct {
+	status = "disabled";
+};
