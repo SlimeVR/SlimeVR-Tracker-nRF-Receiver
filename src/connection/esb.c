@@ -50,6 +50,8 @@ K_THREAD_DEFINE(esb_packet_filter_thread_id, 256, esb_packet_filter_thread, NULL
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
+static void esb_parse_pair(void);
+
 void event_handler(struct esb_evt const *event)
 {
 	switch (event->evt_id)
@@ -68,9 +70,20 @@ void event_handler(struct esb_evt const *event)
 			switch (rx_payload.length)
 			{
 			case 8:
-				LOG_INF("RX Pairing Packet");
+				LOG_DBG("rx: %16llX", *(uint64_t *)rx_payload.data);
 				memcpy(pairing_buf, rx_payload.data, 8);
-				esb_write_payload(&tx_payload_pair); // Add to TX buffer // TODO: delayed by several packets
+				switch (pairing_buf[1])
+				{
+				case 1: // receives ack generated from last packet
+					LOG_DBG("RX Pairing Sent ACK");
+					break;
+				case 2: // should "acknowledge" pairing data sent from receiver
+					LOG_DBG("RX Pairing ACK Receiver");
+					break;
+				default: // first packet in pairing burst
+					LOG_INF("RX Pairing Request");
+					break;
+				}
 				break;
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
@@ -317,6 +330,33 @@ void esb_pop_pair(void)
 	}
 }
 
+void esb_parse_pair()
+{
+	uint64_t found_addr = (*(uint64_t *)pairing_buf >> 16) & 0xFFFFFFFFFFFF;
+	uint16_t send_tracker_id = stored_trackers; // Use new tracker id
+	for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+	{
+		if (found_addr != 0 && stored_tracker_addr[i] == found_addr)
+		{
+			//LOG_INF("Found device linked to id %d with address %012llX", i, found_addr);
+			send_tracker_id = i;
+		}
+	}
+	uint8_t checksum = crc8_ccitt(0x07, &pairing_buf[2], 6); // make sure the packet is valid
+	if (checksum == 0)
+		checksum = 8;
+	if (checksum == pairing_buf[0] && found_addr != 0 && send_tracker_id == stored_trackers && stored_trackers < MAX_TRACKERS) // New device, add to NVS
+	{
+		esb_add_pair(found_addr, false);
+		set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
+	}
+	if (checksum == pairing_buf[0] && send_tracker_id < MAX_TRACKERS) // Make sure the dongle is not full
+		tx_payload_pair.data[0] = pairing_buf[0]; // Use checksum sent from device to make sure packet is for that device
+	else
+		tx_payload_pair.data[0] = 0; // Invalidate packet
+	tx_payload_pair.data[1] = send_tracker_id; // Add tracker id to packet
+}
+
 void esb_pair(void)
 {
 	LOG_INF("Pairing");
@@ -329,6 +369,7 @@ void esb_pair(void)
 	LOG_INF("Device address: %012llX", *addr & 0xFFFFFFFFFFFF);
 	set_led(SYS_LED_PATTERN_SHORT, SYS_LED_PRIORITY_CONNECTION);
 	esb_pairing = true;
+	pairing_buf[1] = 255; // initialize packet flag
 	while (esb_pairing)
 	{
 		if (!esb_initialized)
@@ -336,33 +377,23 @@ void esb_pair(void)
 			esb_initialize(false);
 			esb_start_rx();
 		}
-		uint64_t found_addr = (*(uint64_t *)pairing_buf >> 16) & 0xFFFFFFFFFFFF;
-		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
-		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+		switch (pairing_buf[1])
 		{
-			if (found_addr != 0 && stored_tracker_addr[i] == found_addr)
-			{
-				//LOG_INF("Found device linked to id %d with address %012llX", i, found_addr);
-				send_tracker_id = i;
-			}
+		case 2:
+			esb_flush_tx(); // Flush TX buffer for next pairing burst
+		case 255:
+			break;
+		default: // first packet in pairing burst
+			esb_parse_pair();
+			LOG_DBG("tx: %16llX", *(uint64_t *)tx_payload_pair.data);
+			esb_write_payload(&tx_payload_pair); // Add to TX buffer
+			break;
 		}
-		uint8_t checksum = crc8_ccitt(0x07, &pairing_buf[2], 6); // make sure the packet is valid
-		if (checksum == 0)
-			checksum = 8;
-		if (checksum == pairing_buf[0] && found_addr != 0 && send_tracker_id == stored_trackers && stored_trackers < MAX_TRACKERS) // New device, add to NVS
-		{
-			esb_add_pair(found_addr, false);
-			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
-		}
-		if (checksum == pairing_buf[0] && send_tracker_id < MAX_TRACKERS) // Make sure the dongle is not full
-			tx_payload_pair.data[0] = pairing_buf[0]; // Use checksum sent from device to make sure packet is for that device
-		else
-			tx_payload_pair.data[0] = 0; // Invalidate packet
-		tx_payload_pair.data[1] = send_tracker_id; // Add tracker id to packet
+		pairing_buf[1] = 255; // flag packet processed
 		//esb_flush_rx();
 		//esb_flush_tx();
 		//esb_write_payload(&tx_payload_pair); // Add to TX buffer
-		k_msleep(10);
+		k_usleep(100);
 	}
 	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_CONNECTION);
 	esb_deinitialize();
