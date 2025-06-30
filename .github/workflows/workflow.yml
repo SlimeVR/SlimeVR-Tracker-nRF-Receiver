@@ -17,12 +17,14 @@ permissions: write-all
 
 jobs:
   build:
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         boards: [
                   {boardname: "nrf52840dongle/nrf52840", fileformat: "hex", filename: "SlimeNRF_Nordic_eByte_Dongle_Receiver"}, 
                   {boardname: "holyiot_21017/nrf52840", fileformat: "hex", filename: "SlimeNRF_Holyiot_Dongle_Receiver"}, 
-                  {boardname: "supermini_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_SuperMini_Receiver"}, 
+                  {boardname: "promicro_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_SuperMini_Receiver"}, 
                   {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver"}, 
                   {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver"}, 
                   {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver"}, 
