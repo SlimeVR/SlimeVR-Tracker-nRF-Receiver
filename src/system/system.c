@@ -69,11 +69,30 @@ void reboot_counter_write(uint8_t reboot_counter) {
 // retained not implemented
 void sys_write(uint16_t id, void* retained_ptr, const void* data, size_t len) {
 	sys_nvs_init();
-	nvs_write(&fs, id, data, len);
+	int err = nvs_write(&fs, id, data, len);
+	if (err < 0)
+	{
+		LOG_ERR("Failed to write to NVS, error: %d", err);
+		return;
+	}
 }
 
 // reading from nvs
 void sys_read(uint16_t id, void* data, size_t len) {
 	sys_nvs_init();
-	nvs_read(&fs, id, data, len);
+	int err = nvs_read(&fs, id, data, len);
+	if (err < 0)
+	{
+		if (err == -ENOENT) // suppress ENOENT
+		{
+			LOG_DBG("No entry exists for ID %d, read data set to zero", id);
+		}
+		else
+		{
+			LOG_ERR("Failed to read from NVS, error: %d", err);
+			LOG_WRN("Read data set to zero");
+		}
+		memset(data, 0, len);
+		return;
+	}
 }
