@@ -49,6 +49,7 @@
 
 #define CONST_EARTH_GRAVITY 9.80665
 
+float q_mag(const float *q);
 void q_normalize(const float *q, float *out);
 void q_multiply(const float *x, const float *y, float *out);
 void q_conj(const float *q, float *out);
