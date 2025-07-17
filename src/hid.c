@@ -249,6 +249,13 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 			q[1] = FIXED_15_TO_DOUBLE(buf[0]);
 			q[2] = FIXED_15_TO_DOUBLE(buf[1]);
 			q[3] = FIXED_15_TO_DOUBLE(buf[2]);
+			float mag = q_mag(q);
+			if (mag < 0.999f || mag > 1.001f) // make sure the quaternion is valid
+			{
+				LOG_ERR("Abnormal quat %012llX i%d p%d n%.2f", stored_tracker_addr[data[1]], data[1], data[0], (double)mag);
+				printk("a: %5.2f %5.2f %5.2f %5.2f\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3]);
+				return;
+			}
 		}
 		else
 		{
