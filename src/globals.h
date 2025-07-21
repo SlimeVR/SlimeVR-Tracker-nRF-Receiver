@@ -33,6 +33,7 @@
 #define MAX_TRACKERS 24
 #endif
 #define DETECTION_THRESHOLD 16
+#define RESET_THRESHOLD 15
 
 // TODO: move to esb
 extern uint8_t stored_trackers;
