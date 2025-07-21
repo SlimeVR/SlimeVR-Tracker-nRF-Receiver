@@ -288,7 +288,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 			memcpy(cur_q, q, sizeof(q));
 			*cur_v = *q_buf;
 			*cur_p = data[0];
-			if (!mag_cur_invalid && last_valid_trackers[data[1]] > 2) // reset last_q
+			if (!mag_cur_invalid && last_valid_trackers[data[1]] >= RESET_THRESHOLD) // reset last_q
 			{
 				LOG_WRN("Reset rotation for %012llX, ID %d", stored_tracker_addr[data[1]], data[1]);
 				last_valid_trackers[data[1]] = 0;
