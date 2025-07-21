@@ -32,7 +32,10 @@
 #else
 #define MAX_TRACKERS 24
 #endif
-#define DETECTION_THRESHOLD 16
+
+// How many packets to receive from one ID in a second before we consider it valid
+#define DETECTION_THRESHOLD 25
+// How many abnormal rotations to receive before we consider it valid
 #define RESET_THRESHOLD 15
 
 // TODO: move to esb
