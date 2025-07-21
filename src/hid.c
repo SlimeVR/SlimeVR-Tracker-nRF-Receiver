@@ -266,7 +266,9 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 				v[i] = v[i] * 2 - 1;
 			q_iem(v, q);
 		}
+		float zero[4] = {0};
 		float *last_q = last_q_trackers[data[1]];
+		bool last_invalid = !memcmp(last_q, zero, sizeof(zero));
 		uint32_t *last_v = &last_v_trackers[data[1]];
 		uint8_t *last_p = &last_p_trackers[data[1]];
 		float *cur_q = cur_q_trackers[data[1]];
@@ -276,7 +278,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		float mag_cur = q_diff_mag(q, cur_q); // difference between last received
 		bool mag_invalid = mag > 0.5f && mag < 6.28f - 0.5f; // possibly invalid rotation
 		bool mag_cur_invalid = mag_cur > 0.5f && mag_cur < 6.28f - 0.5f; // possibly inconsistent rotation
-		if (mag_invalid)
+		if (mag_invalid && !last_invalid)
 		{
 			// HWID, ID, packet type, rotation difference (rad), last valid packet
 			LOG_ERR("Abnormal rot. %012llX i%d p%d m%.2f/%.2f v%d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, (double)mag_cur, last_valid_trackers[data[1]]);
