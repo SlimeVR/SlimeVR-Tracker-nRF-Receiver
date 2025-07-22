@@ -323,7 +323,7 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		if (reports[sizeof(report) * (report_sent + i) + 1] == report.data[1])
 		{
 			memcpy(&reports[sizeof(report) * (report_sent + i)], &report, sizeof(report));
-			break;
+			return;
 		}
 	}
 	if (report_count > 100) // overflow
