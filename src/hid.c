@@ -276,16 +276,19 @@ void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 		uint8_t *cur_p = &cur_p_trackers[data[1]];
 		float mag = q_diff_mag(q, last_q); // difference between last valid
 		float mag_cur = q_diff_mag(q, cur_q); // difference between last received
-		bool mag_invalid = mag > 0.5f && mag < 6.28f - 0.5f; // possibly invalid rotation
-		bool mag_cur_invalid = mag_cur > 0.5f && mag_cur < 6.28f - 0.5f; // possibly inconsistent rotation
+		bool mag_invalid = mag > 0.26f && mag < 6.28f - 0.26f; // possibly invalid rotation
+		bool mag_cur_invalid = mag_cur > 0.26f && mag_cur < 6.28f - 0.26f; // possibly inconsistent rotation
 		if (mag_invalid && !last_invalid)
 		{
-			// HWID, ID, packet type, rotation difference (rad), last valid packet
-			LOG_ERR("Abnormal rot. %012llX i%d p%d m%.2f/%.2f v%d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, (double)mag_cur, last_valid_trackers[data[1]]);
-			// decoded quat, packet type, q_buf
-			printk("a: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3], data[0], *q_buf);
-			printk("b: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)cur_q[0], (double)cur_q[1], (double)cur_q[2], (double)cur_q[3], *cur_p, *cur_v);
-			printk("c: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3], *last_p, *last_v);
+			if (!mag_cur_invalid && last_valid_trackers[data[1]] >= RESET_THRESHOLD - 1)
+			{
+				// HWID, ID, packet type, rotation difference (rad), last valid packet
+				LOG_ERR("Abnormal rot. %012llX i%d p%d m%.2f/%.2f v%d", stored_tracker_addr[data[1]], data[1], data[0], (double)mag, (double)mag_cur, last_valid_trackers[data[1]]);
+				// decoded quat, packet type, q_buf
+				printk("a: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)q[0], (double)q[1], (double)q[2], (double)q[3], data[0], *q_buf);
+				printk("b: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)cur_q[0], (double)cur_q[1], (double)cur_q[2], (double)cur_q[3], *cur_p, *cur_v);
+				printk("c: %5.2f %5.2f %5.2f %5.2f p%d:%08X\n", (double)last_q[0], (double)last_q[1], (double)last_q[2], (double)last_q[3], *last_p, *last_v);
+			}
 			last_valid_trackers[data[1]]++;
 			memcpy(cur_q, q, sizeof(q));
 			*cur_v = *q_buf;
