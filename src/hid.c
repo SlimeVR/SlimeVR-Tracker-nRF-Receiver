@@ -73,6 +73,9 @@ static void packet_device_addr(uint8_t *report, uint16_t id) // associate id and
 	memset(&report[8], 0, 8); // last 8 bytes unused for now
 }
 
+static uint32_t dropped_reports = 0;
+static uint16_t max_dropped_reports = 0;
+
 static void send_report(struct k_work *work)
 {
 	if (!usb_enabled) return;
@@ -94,7 +97,8 @@ static void send_report(struct k_work *work)
 //		ret = hid_int_ep_write(hdev, &reports, sizeof(report) * report_count, &wrote);
 		ret = hid_int_ep_write(hdev, &reports[sizeof(report) * report_sent], sizeof(report) * 4, &wrote);
 		if (report_count > 4) {
-			LOG_INF("Dropped %u report%s", report_count - 4, report_count - 4 > 1 ? "s" : "");
+			dropped_reports += report_count - 4;
+			if (dropped_reports > max_dropped_reports) max_dropped_reports = dropped_reports;
 		}
 		report_sent += report_count;
 		report_sent += 3; // this is a hack to make sure the ep isnt reading the same bits as trackers write to
@@ -113,6 +117,20 @@ static void send_report(struct k_work *work)
 		//LOG_DBG("HID IN endpoint busy");
 	}
 }
+
+#define DROPPED_REPORT_LOG_INTERVAL 5000
+
+static void hid_dropped_reports_logging(void)
+{
+	while (1) {
+		if (dropped_reports) LOG_INF("Dropped reports: %u (max: %u)", dropped_reports, max_dropped_reports);
+		dropped_reports = 0;
+		max_dropped_reports = 0;
+		k_msleep(DROPPED_REPORT_LOG_INTERVAL);
+	}
+}
+
+K_THREAD_DEFINE(hid_dropped_reports_logging_thread, 256, hid_dropped_reports_logging, NULL, NULL, NULL, 6, 0, 0);
 
 static void int_in_ready_cb(const struct device *dev)
 {
