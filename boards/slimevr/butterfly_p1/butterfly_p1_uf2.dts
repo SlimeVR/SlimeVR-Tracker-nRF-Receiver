@@ -67,7 +67,6 @@
 	zephyr,user {
 		led-gpios = <&gpio0 3 GPIO_OPEN_SOURCE>;
 	};
-
 };
 
 &reg1 {
@@ -99,6 +98,10 @@ zephyr_udc0: &usbd {
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
 	};
+};
+
+&cryptocell {
+	status = "disabled";
 };
 
 &nfct {
