@@ -69,10 +69,6 @@
 	};
 };
 
-&reg1 {
-	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
-};
-
 &gpiote {
 	status = "okay";
 };
@@ -98,10 +94,6 @@ zephyr_udc0: &usbd {
 	cdc_acm_uart0: cdc_acm_uart0 {
 		compatible = "zephyr,cdc-acm-uart";
 	};
-};
-
-&cryptocell {
-	status = "disabled";
 };
 
 &nfct {
