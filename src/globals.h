@@ -37,6 +37,8 @@
 #define DETECTION_THRESHOLD 25
 // How many abnormal rotations to receive before we consider it valid
 #define RESET_THRESHOLD 75
+// Invalid rotation threshold in radians
+#define ROTATION_THRESHOLD 0.52f
 
 // TODO: move to esb
 extern uint8_t stored_trackers;
