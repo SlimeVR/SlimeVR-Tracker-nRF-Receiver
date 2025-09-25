@@ -85,6 +85,15 @@ void event_handler(struct esb_evt const *event)
 					break;
 				}
 				break;
+			case 20: // has crc32
+				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
+				uint32_t *crc_ptr = (uint32_t *)&rx_payload.data[16];
+				if (*crc_ptr != crc_check)
+				{
+					LOG_ERR("Incorrect checksum, computed %08X, received %08X", crc_check, *crc_ptr);
+					printk("%016llX%016llX\n", *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
+					break;
+				}
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
 				if (imu_id >= stored_trackers) // not a stored tracker
