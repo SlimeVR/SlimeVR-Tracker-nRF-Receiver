@@ -94,6 +94,7 @@ void event_handler(struct esb_evt const *event)
 					printk("%016llX%016llX\n", *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
 					break;
 				}
+				// Fall-throught
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
 				if (imu_id >= stored_trackers) // not a stored tracker
