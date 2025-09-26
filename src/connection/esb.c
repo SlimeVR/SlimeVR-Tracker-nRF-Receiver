@@ -41,6 +41,9 @@ static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 
 uint8_t pairing_buf[8] = {0};
 static uint8_t discovered_trackers[MAX_TRACKERS] = {0};
+uint8_t sequences[255] = {0};
+uint16_t packets_count[255] = {0};
+uint8_t packets_lost[255] = {0};
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
@@ -85,13 +88,27 @@ void event_handler(struct esb_evt const *event)
 					break;
 				}
 				break;
+			case 21: // has sequence number
+				// TODO : It's a very crude implementation
+				// But brain hurty, will make a better one later
+				uint8_t seq = rx_payload.data[20];
+				uint8_t tracker_id = rx_payload.data[1];
+				int next = sequences[tracker_id] + 1;
+				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {\
+					if(next > seq && next < seq + 128) {
+						LOG_ERR("Sequence missmatch for tracker %d, expected %d got %d. Discarding.", tracker_id, next, seq);
+						break;
+					}
+				}
+				sequences[tracker_id] = seq;
+				// Fall-throught
 			case 20: // has crc32
 				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
 				uint32_t *crc_ptr = (uint32_t *)&rx_payload.data[16];
 				if (*crc_ptr != crc_check)
 				{
 					LOG_ERR("Incorrect checksum, computed %08X, received %08X", crc_check, *crc_ptr);
-					printk("%016llX%016llX\n", *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
+					printk("%08llx%016llX%016llX\n", *(uint64_t *)&rx_payload.data[16] & 0XFFFFFFFF, *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
 					break;
 				}
 				// Fall-throught
@@ -109,6 +126,7 @@ void event_handler(struct esb_evt const *event)
 				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
 				break;
 			default:
+				LOG_ERR("Wrong packet length: %d", rx_payload.length);
 				break;
 			}
 		}
