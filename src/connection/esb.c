@@ -66,6 +66,7 @@ void event_handler(struct esb_evt const *event)
 		LOG_DBG("TX FAILED");
 		break;
 	case ESB_EVENT_RX_RECEIVED:
+		// TODO: have to read rx until -ENODATA (or -EACCES/-EINVAL)
 	// TODO: make tx payload for ack here
 		int err = esb_read_rx_payload(&rx_payload);
 		if (!err) // zero, rx success
