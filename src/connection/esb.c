@@ -23,6 +23,7 @@
 #include "globals.h"
 #include "system/system.h"
 #include "hid.h"
+#include "tdma.h"
 
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
 #include <zephyr/sys/crc.h>
