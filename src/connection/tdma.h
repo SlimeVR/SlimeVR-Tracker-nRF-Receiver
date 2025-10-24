@@ -34,6 +34,17 @@ uint8_t tdma_window_allocations = 256;
 int8_t tdma_tracker_id_to_slot[MAX_TRACKERS] = {-1};
 uint8_t tdma_next_tracker_slot = 0;
 
+bool tdma_adjust_window_size(uint8_t trackers_amount) {
+    if(trackers_amount <= 8)
+        tdma_tracker_slots = 8;
+    else if(trackers_amount <= 16)
+        tdma_tracker_slots = 16;
+    else
+        tdma_tracker_slots = 32;
+    tdma_window_allocations = TDMA_WINDOWS_COUNT / tdma_tracker_slots;
+    return trackers_amount <= tdma_tracker_slots;
+}
+
 uint16_t tdma_get_window_from_timer(uint16_t timer) {
     return timer >> TDMA_WINDOWS_SHIFT;
 }
@@ -67,15 +78,4 @@ int8_t tdma_insert_tracker(uint8_t tracker_id) {
 
 bool tdma_is_dongle_order(uint16_t timer) {
     return tdma_get_window_from_timer(timer) < tdma_tracker_slots;
-}
-
-bool tdma_adjust_window_size(uint8_t trackers_amount) {
-    if(trackers_amount <= 8)
-        tdma_tracker_slots = 8;
-    else if(trackers_amount <= 16)
-        tdma_tracker_slots = 16;
-    else
-        tdma_tracker_slots = 32;
-    tdma_window_allocations = TDMA_WINDOWS_COUNT / tdma_tracker_slots;
-    return trackers_amount <= tdma_tracker_slots;
 }
