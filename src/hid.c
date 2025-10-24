@@ -34,9 +34,11 @@ static struct tracker_report {
 	.data = {0}
 };;
 
-uint8_t reports[MAX_TRACKERS * sizeof(report)];
-uint8_t report_count = 0;
-uint8_t report_sent = 0;
+struct tracker_report reports[MAX_TRACKERS];
+atomic_t report_write_index = 0;
+atomic_t report_read_index = 0;
+// read_index == write_index -> empty fifo
+// (write_index + 1) % MAX_TRACKERS == read_index -> full fifo
 
 static bool configured;
 static const struct device *hdev;
@@ -44,6 +46,9 @@ static ATOMIC_DEFINE(hid_ep_in_busy, 1);
 
 #define HID_EP_BUSY_FLAG	0
 #define REPORT_PERIOD		K_MSEC(1) // streaming reports
+#define HID_EP_REPORT_COUNT 4
+
+struct tracker_report ep_report_buffer[HID_EP_REPORT_COUNT];
 
 LOG_MODULE_REGISTER(hid_event, LOG_LEVEL_INF);
 
@@ -80,30 +85,45 @@ static void send_report(struct k_work *work)
 {
 	if (!usb_enabled) return;
 	if (!stored_trackers) return;
-	if (report_count == 0 && k_uptime_get() - 100 < last_registration_sent) return; // send registrations only every 100ms
+
+	// Get current FIFO status atomically
+	size_t write_idx = (size_t)atomic_get(&report_write_index);
+	size_t read_idx = (size_t)atomic_get(&report_read_index);
+
+	if (write_idx == read_idx && k_uptime_get() - 100 < last_registration_sent) {
+		return; // send registrations only every 100ms
+	}
+
 	int ret, wrote;
 
 	last_registration_sent = k_uptime_get();
 
 	if (!atomic_test_and_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG)) {
-		// TODO: this really sucks, how can i send as much or as little as i want instead??
-//		for (int i = report_count; i < 4; i++) memcpy(&reports[sizeof(report) * (report_sent+i)], &reports[sizeof(report) * report_sent], sizeof(report)); // just duplicate first entry a bunch, this will definitely cause problems
-		// cycle through devices and send associated address for server to register
-		for (int i = report_count; i < 4; i++) {
-			packet_device_addr(&reports[sizeof(report) * (report_sent + i)], sent_device_addr);
-			sent_device_addr++;
-			sent_device_addr %= stored_trackers;
+		// Calculate how many reports we have available
+		int available_reports = write_idx - read_idx;
+		if (available_reports < 0) available_reports += MAX_TRACKERS;
+		size_t reports_to_send = (size_t)((available_reports > HID_EP_REPORT_COUNT) ? HID_EP_REPORT_COUNT : available_reports);
+
+		int epind;
+		// Copy existing data to buffer
+		for (epind = 0; epind < reports_to_send; epind++) {
+			ep_report_buffer[epind] = reports[read_idx];
+			epind++;
+			read_idx++;
+			if (read_idx == MAX_TRACKERS) read_idx = 0;
+			atomic_set(&report_read_index, read_idx);
 		}
-//		ret = hid_int_ep_write(hdev, &reports, sizeof(report) * report_count, &wrote);
-		ret = hid_int_ep_write(hdev, &reports[sizeof(report) * report_sent], sizeof(report) * 4, &wrote);
-		if (report_count > 4) {
-			dropped_reports += report_count - 4;
-			if (dropped_reports > max_dropped_reports) max_dropped_reports = dropped_reports;
+
+		// Pad remaining report slots with device addr
+		for (; epind < HID_EP_REPORT_COUNT; epind++) {
+			if (stored_trackers > 0) {
+				packet_device_addr(ep_report_buffer[epind].data, sent_device_addr);
+				sent_device_addr = (sent_device_addr + 1) % stored_trackers;
+			}
 		}
-		report_sent += report_count;
-		report_sent += 3; // this is a hack to make sure the ep isnt reading the same bits as trackers write to
-		if (report_sent > MAX_TRACKERS / 2) report_sent = 0; // an attempt to make ringbuffer so the ep isnt reading the same bits as trackers write to // TODO: might be too small!
-		report_count = 0;
+
+		ret = hid_int_ep_write(hdev, (uint8_t *)ep_report_buffer, sizeof(report) * HID_EP_REPORT_COUNT, &wrote);
+
 		if (ret != 0) {
 			/*
 			 * Do nothing and wait until host has reset the device
@@ -240,20 +260,38 @@ K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0
 
 void hid_write_packet_n(uint8_t *data, uint8_t rssi)
 {
-	memcpy(&report.data, data, 16); // all data can be passed through
+	memcpy(&report.data, data, sizeof(report)); // all data can be passed through
 	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
 		report.data[15] = rssi;
-	// TODO: this sucks
-	for (int i = 0; i < report_count; i++) // replace existing entry instead
-	{
-		if (reports[sizeof(report) * (report_sent + i) + 1] == report.data[1])
-		{
-			memcpy(&reports[sizeof(report) * (report_sent + i)], &report, sizeof(report));
-			return;
+	// Get current FIFO status atomically
+	size_t write_idx = (size_t)atomic_get(&report_write_index);
+	size_t read_idx = (size_t)atomic_get(&report_read_index);
+
+	// Try to replace existing entry for the same tracker first
+	if (write_idx != read_idx) {
+		// Start from read point + 1 to avoid hitting the entry being used
+		size_t check_index = read_idx + 1;
+		if (check_index == MAX_TRACKERS) check_index = 0;
+
+		while (check_index != write_idx) {
+			if (reports[check_index].data[1] == data[1]) {
+				// Replace existing entry
+				reports[check_index] = report;
+				return;
+			}
+			check_index = check_index + 1;
+			if (check_index == MAX_TRACKERS) check_index = 0;
 		}
 	}
-	if (report_count > 100) // overflow
+	if (write_idx + 1 == read_idx || (write_idx == MAX_TRACKERS-1 && read_idx == 0)) { // overflow
+		dropped_reports ++;
 		return;
-	memcpy(&reports[sizeof(report) * (report_sent + report_count)], &report, sizeof(report));
-	report_count++;
+	}
+	// Write new packet into FIFO
+	reports[write_idx] = report;
+
+	// Update write index atomically
+	write_idx ++;
+	if (write_idx == MAX_TRACKERS) write_idx = 0;
+	atomic_set(&report_write_index, write_idx);
 }
