@@ -23,6 +23,7 @@
 #include "globals.h"
 #include "system/system.h"
 #include "build_defines.h"
+#include "parse_args.h"
 
 #define USB DT_NODELABEL(usbd)
 #if DT_NODE_HAS_STATUS(USB, okay)
@@ -34,7 +35,6 @@
 #include "connection/esb.h"
 
 #include <ctype.h>
-#include <stdlib.h>
 
 #define DFU_DBL_RESET_MEM 0x20007F7C
 #define DFU_DBL_RESET_APP 0x4ee5677e
@@ -160,6 +160,12 @@ static void print_list(void)
 		printk("%012llX\n", stored_tracker_addr[i]);
 }
 
+static inline void strtolower(char *str) {
+	for(int i = 0; str[i]; i++) {
+		str[i] = tolower(str[i]);
+	}
+}
+
 static void console_thread(void)
 {
 	console_getline_init();
@@ -178,87 +184,89 @@ static void console_thread(void)
 	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
 
-	uint8_t command_info[] = "info";
-	uint8_t command_uptime[] = "uptime";
-	uint8_t command_list[] = "list";
-	uint8_t command_reboot[] = "reboot";
-	uint8_t command_add[] = "add";
-	uint8_t command_remove[] = "remove";
-	uint8_t command_pair[] = "pair";
-	uint8_t command_exit[] = "exit";
-	uint8_t command_clear[] = "clear";
+	const char command_info[] = "info";
+	const char command_uptime[] = "uptime";
+	const char command_list[] = "list";
+	const char command_reboot[] = "reboot";
+	const char command_add[] = "add";
+	const char command_remove[] = "remove";
+	const char command_pair[] = "pair";
+	const char command_exit[] = "exit";
+	const char command_clear[] = "clear";
 
 #if DFU_EXISTS
 	printk("dfu                          Enter DFU bootloader\n");
 
-	uint8_t command_dfu[] = "dfu";
+	const char command_dfu[] = "dfu";
 #endif
 
 	printk("meow                         Meow!\n");
 
-	uint8_t command_meow[] = "meow";
+	const char command_meow[] = "meow";
 
 	while (1) {
-		uint8_t *line = console_getline();
-		uint8_t *arg = NULL;
-		for (uint8_t *p = line; *p; ++p)
-		{
-			*p = tolower(*p);
-			if (*p == ' ' && !arg)
-			{
-				*p = 0;
-				p++;
-				*p = tolower(*p);
-				if (*p)
-					arg = p;
-			}
-		}
+		char *line = console_getline();
 
-		if (memcmp(line, command_info, sizeof(command_info)) == 0)
+		char* argv[5] = {NULL}; // command and 4 args
+		size_t argc = parse_args(line, argv, ARRAY_SIZE(argv));
+		if(argc == 0)
+			continue;
+		if(argc > 0)
+			strtolower(argv[0]); // lower case the command
+		if(argc > 1)
+			strtolower(argv[1]); // lower case the first argument
+		// only care that the first words are matchable
+
+		if (strcmp(line, command_info) == 0)
 		{
 			print_info();
 		}
-		else if (memcmp(line, command_uptime, sizeof(command_uptime)) == 0)
+		else if (strcmp(line, command_uptime) == 0)
 		{
 			print_uptime();
 		}
-		else if (memcmp(line, command_add, sizeof(command_add)) == 0)
+		else if (strcmp(line, command_add) == 0)
 		{
-			uint64_t addr = strtoull(arg, NULL, 16);
+			if (argc != 2)
+			{
+				printk("Invalid number of arguments\n");
+				continue;
+			}
+			uint64_t addr = parse_u64(argv[1], 16);
 			uint8_t buf[13];
 			snprintk(buf, 13, "%012llx", addr);
-			if (addr != 0 && memcmp(buf, arg, 13) == 0)
+			if (addr != 0 && strcmp(buf, argv[1]) == 0)
 				esb_add_pair(addr, true);
 			else
 				printk("Invalid address\n");
 		}
-		else if (memcmp(line, command_remove, sizeof(command_remove)) == 0)
+		else if (strcmp(line, command_remove) == 0)
 		{
 			esb_pop_pair();
 		}
-		else if (memcmp(line, command_list, sizeof(command_list)) == 0)
+		else if (strcmp(line, command_list) == 0)
 		{
 			print_list();
 		}
-		else if (memcmp(line, command_reboot, sizeof(command_reboot)) == 0)
+		else if (strcmp(line, command_reboot) == 0)
 		{
 			skip_dfu();
 			sys_reboot(SYS_REBOOT_COLD);
 		}
-		else if (memcmp(line, command_pair, sizeof(command_pair)) == 0)
+		else if (strcmp(line, command_pair) == 0)
 		{
 			esb_reset_pair();
 		}
-		else if (memcmp(line, command_exit, sizeof(command_exit)) == 0)
+		else if (strcmp(line, command_exit) == 0)
 		{
 			esb_finish_pair();
 		}
-		else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) 
+		else if (strcmp(line, command_clear) == 0) 
 		{
 			esb_clear();
 		}
 #if DFU_EXISTS
-		else if (memcmp(line, command_dfu, sizeof(command_dfu)) == 0)
+		else if (strcmp(line, command_dfu) == 0)
 		{
 #if ADAFRUIT_BOOTLOADER
 			NRF_POWER->GPREGRET = 0x57;
@@ -269,7 +277,7 @@ static void console_thread(void)
 #endif
 		}
 #endif
-		else if (memcmp(line, command_meow, sizeof(command_meow)) == 0) 
+		else if (strcmp(line, command_meow) == 0) 
 		{
 			print_meow();
 		}
