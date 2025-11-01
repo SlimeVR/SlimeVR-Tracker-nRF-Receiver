@@ -185,7 +185,7 @@ int clocks_start(void)
 // this was randomly generated
 // TODO: I have no idea?
 static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};
-static const uint8_t discovery_base_addr_1[4] = {0x28, 0xFF, 0x50, 0xB8};
+static const uint8_t discovery_base_addr_1[4] = {0x28, 0xFF, 0x50, 0xB8}; // TODO: not used
 static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
 
 static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
@@ -272,6 +272,7 @@ static void esb_deinitialize(void)
 	esb_initialized = false;
 }
 
+// TODO: not used
 inline void esb_set_addr_discovery(void)
 {
 	memcpy(base_addr_0, discovery_base_addr_0, sizeof(base_addr_0));
@@ -298,9 +299,11 @@ inline void esb_set_addr_paired(void)
 		if (addr_buffer[i] == 0x00 || addr_buffer[i] == 0x55 || addr_buffer[i] == 0xAA) // Avoid invalid addresses (see nrf datasheet)
 			addr_buffer[i] += 8;
 	}
-	memcpy(base_addr_0, addr_buffer, sizeof(base_addr_0));
+//	memcpy(base_addr_0, addr_buffer, sizeof(base_addr_0));
 	memcpy(base_addr_1, addr_buffer + 4, sizeof(base_addr_1));
-	memcpy(addr_prefix, addr_buffer + 8, sizeof(addr_prefix));
+//	memcpy(addr_prefix, addr_buffer + 8, sizeof(addr_prefix));
+	memcpy(base_addr_0, discovery_base_addr_0, sizeof(base_addr_0));
+	memcpy(addr_prefix, discovery_addr_prefix, sizeof(addr_prefix));
 }
 
 static bool esb_pairing = false;
@@ -390,9 +393,10 @@ void esb_parse_pair()
 void esb_pair(void)
 {
 	LOG_INF("Pairing");
-	esb_set_addr_discovery();
+	esb_set_addr_paired();
 	esb_initialize(false);
 	esb_start_rx();
+	tx_payload_pair.pipe = 0;
 	tx_payload_pair.noack = false;
 	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
 	memcpy(&tx_payload_pair.data[2], addr, 6);
