@@ -67,14 +67,30 @@ void event_handler(struct esb_evt const *event)
 		LOG_DBG("TX FAILED");
 		break;
 	case ESB_EVENT_RX_RECEIVED:
-		// TODO: have to read rx until -ENODATA (or -EACCES/-EINVAL)
+		LOG_DBG("RX");
 	// TODO: make tx payload for ack here
-		int err = esb_read_rx_payload(&rx_payload);
-		if (!err) // zero, rx success
+		int err = 0;
+		while (!err) // zero, rx success
 		{
-			switch (rx_payload.length)
+			err = esb_read_rx_payload(&rx_payload);
+			if (err == -ENODATA)
 			{
-			case 8:
+				return;
+			}
+			else if (err)
+			{
+				LOG_ERR("Error while reading rx packet: %d", err);
+				return;
+			}
+			// TODO: split into separate handlers
+			switch (rx_payload.pipe)
+			{
+			case 0: // base address 0 (pairing address)
+				if (rx_payload.length != 8)
+				{
+					LOG_ERR("Wrong packet length: %d", rx_payload.length);
+					continue;
+				}
 				LOG_DBG("rx: %16llX", *(uint64_t *)rx_payload.data);
 				memcpy(pairing_buf, rx_payload.data, 8);
 				switch (pairing_buf[1])
@@ -89,7 +105,11 @@ void event_handler(struct esb_evt const *event)
 					LOG_INF("RX Pairing Request");
 					break;
 				}
-				break;
+				continue;
+			default: // base address 1
+			}
+			switch (rx_payload.length)
+			{
 			case 21: // has sequence number
 				// TODO : It's a very crude implementation
 				// But brain hurty, will make a better one later
@@ -117,11 +137,11 @@ void event_handler(struct esb_evt const *event)
 			case 16:
 				uint8_t imu_id = rx_payload.data[1];
 				if (imu_id >= stored_trackers) // not a stored tracker
-					return;
+					continue;
 				if (discovered_trackers[imu_id] < DETECTION_THRESHOLD) // garbage filtering of nonexistent tracker
 				{
 					discovered_trackers[imu_id]++;
-					return;
+					continue;
 				}
 				if (rx_payload.data[0] > 223) // reserved for receiver only
 					break;
@@ -131,10 +151,6 @@ void event_handler(struct esb_evt const *event)
 				LOG_ERR("Wrong packet length: %d", rx_payload.length);
 				break;
 			}
-		}
-		else
-		{
-			LOG_ERR("Error while reading rx packet: %d", err);
 		}
 		break;
 	}
@@ -413,21 +429,26 @@ void esb_pair(void)
 		}
 		switch (pairing_buf[1])
 		{
+		case 0: // first packet in pairing burst
+			esb_parse_pair();
+			LOG_DBG("tx: %16llX", *(uint64_t *)tx_payload_pair.data);
+//			esb_flush_tx();
+			esb_write_payload(&tx_payload_pair); // Add to TX buffer
+			pairing_buf[1] = 255; // flag packet processed
+			k_msleep(10);
+			esb_flush_tx(); // Flush TX buffer for next pairing burst
+			continue;
 		case 2:
 			esb_flush_tx(); // Flush TX buffer for next pairing burst
 		case 255:
-			break;
-		default: // first packet in pairing burst
-			esb_parse_pair();
-			LOG_DBG("tx: %16llX", *(uint64_t *)tx_payload_pair.data);
-			esb_write_payload(&tx_payload_pair); // Add to TX buffer
+		default:
 			break;
 		}
 		pairing_buf[1] = 255; // flag packet processed
 		//esb_flush_rx();
 		//esb_flush_tx();
 		//esb_write_payload(&tx_payload_pair); // Add to TX buffer
-		k_usleep(100);
+		k_usleep(1);
 	}
 	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_CONNECTION);
 	esb_deinitialize();
