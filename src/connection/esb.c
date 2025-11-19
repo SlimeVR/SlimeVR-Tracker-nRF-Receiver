@@ -47,29 +47,30 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
+// Use this to generate ACK packet to send to tracker when we receive data from it
+// Ideally, it should return as fast as possible
+// Also must not execute any sys calls like sys_write and etc.
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload) {
-	//LOG_INF("Ack handler running");
-	if(data_length > 0 && pipe_id == 0 && new_paired_address == 0) {
-		uint64_t found_addr = (*(uint64_t *)&pdu_data[2]) & 0xFFFFFFFFFFFF;
-	
-		LOG_INF("Pairing request from %012llX", found_addr);
-		uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
-		memcpy(&ack_payload->data[2], addr, 6);
-		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
-		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
-		{
-			if (found_addr != 0 && stored_tracker_addr[i] == found_addr)
-			{
-				//LOG_INF("Found device linked to id %d with address %012llX", i, found_addr);
-				send_tracker_id = i;
-			}
-		}
-		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6); // make sure the packet is valid
+	// Handle new pairing requests
+	if(data_length > 7 && pipe_id == 0 && new_paired_address == 0) {
+		// make sure the packet is valid
+		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6);
 		if (checksum == 0)
 			checksum = 8;
 		if (checksum != pdu_data[0]) {
 			LOG_INF("Checksum error %d != %d", checksum, pdu_data[0]);
 			return;
+		}
+		// Extract tracker's address
+		uint64_t found_addr = (*(uint64_t *)&pdu_data[2]) & 0xFFFFFFFFFFFF;
+		LOG_INF("Pairing request from %012llX", found_addr);
+		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
+		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+		{
+			if (found_addr != 0 && stored_tracker_addr[i] == found_addr)
+			{
+				send_tracker_id = i;
+			}
 		}
 		if (send_tracker_id >= MAX_TRACKERS) {
 			LOG_INF("Too many registered trackers! %d >= %d", send_tracker_id, MAX_TRACKERS);
@@ -77,16 +78,19 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		}
 		if (send_tracker_id == stored_trackers) // New device, add to NVS
 		{
+			// Save the address, we will save it in the esb thread
 			new_paired_address = found_addr;
-			//esb_add_pair(found_addr, false);
-			//set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 		}
 		ack_payload->data[0] = checksum; // Use checksum sent from device to make sure packet is for that device
 		ack_payload->data[1] = send_tracker_id; // Add tracker id to packet
+		// Send our own address back
+		uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
+		memcpy(&ack_payload->data[2], addr, 6);
 		ack_payload->length = 8;
 		*has_ack_payload = true;
-	} else {
-		*has_ack_payload = false;
+	} else if(pipe_id > 0) {
+		// TODO : Send data if we have for this tracker
+		// TODO : Check tracker's timing window and send it offset for TDMA
 	}
 }
 
@@ -115,31 +119,12 @@ void event_handler(struct esb_evt const *event)
 				LOG_ERR("Error while reading rx packet: %d", err);
 				return;
 			}
-			// TODO: split into separate handlers
-			switch (rx_payload.pipe)
-			{
-			case 0: // base address 0 (pairing address)
-				// Processed in ACK handler
-				continue;
-			default: // base address 1
-			}
-			//printk("(%d): %08llx%016llX%016llX\n", rx_payload.length, *(uint64_t *)&rx_payload.data[16] & 0XFFFFFFFF, *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
+			if(rx_payload.pipe == 0)
+				continue; // Handled in ACK handler
 			switch (rx_payload.length)
 			{
 			case 21: // has sequence number
-				// TODO : It's a very crude implementation
-				// But brain hurty, will make a better one later
-				uint8_t seq = rx_payload.data[20];
-				uint8_t tracker_id = rx_payload.data[1];
-				int next = sequences[tracker_id] + 1;
-				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {\
-					if(next > seq && next < seq + 128) {
-						LOG_ERR("Sequence missmatch for tracker %d, expected %d got %d. Discarding.", tracker_id, next, seq);
-						printk("(%d): %08llx%016llX%016llX\n", rx_payload.length, *(uint64_t *)&rx_payload.data[16] & 0XFFFFFFFF, *(uint64_t *)&rx_payload.data[8], *(uint64_t *)rx_payload.data);
-						break;
-					}
-				}
-				sequences[tracker_id] = seq;
+				// We ignore it
 				// Fall-throught
 			case 20: // has crc32
 				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
