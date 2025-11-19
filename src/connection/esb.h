@@ -26,20 +26,16 @@
 #include <esb.h>
 
 void event_handler(struct esb_evt const *event);
+void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
 int clocks_start(void);
 int esb_initialize(bool);
 
-void esb_set_addr_discovery(void);
-void esb_set_addr_paired(void);
+void esb_set_addr(void);
 
 void esb_add_pair(uint64_t addr, bool checksum);
 void esb_pop_pair(void);
 
-void esb_pair(void);
-void esb_reset_pair(void);
-void esb_finish_pair(void);
 void esb_clear(void);
 void esb_write_sync(uint16_t led_clock);
-void esb_receive(void);
 
 #endif
