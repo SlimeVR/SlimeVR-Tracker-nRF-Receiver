@@ -174,8 +174,6 @@ static void console_thread(void)
 	printk("reboot                       Soft reset the device\n");
 	printk("add <address>                Manually add a device\n");
 	printk("remove                       Remove last device\n");
-	printk("pair                         Enter pairing mode\n");
-	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
 
 	uint8_t command_info[] = "info";
@@ -184,8 +182,6 @@ static void console_thread(void)
 	uint8_t command_reboot[] = "reboot";
 	uint8_t command_add[] = "add";
 	uint8_t command_remove[] = "remove";
-	uint8_t command_pair[] = "pair";
-	uint8_t command_exit[] = "exit";
 	uint8_t command_clear[] = "clear";
 
 #if DFU_EXISTS
@@ -244,14 +240,6 @@ static void console_thread(void)
 		{
 			skip_dfu();
 			sys_reboot(SYS_REBOOT_COLD);
-		}
-		else if (memcmp(line, command_pair, sizeof(command_pair)) == 0)
-		{
-			esb_reset_pair();
-		}
-		else if (memcmp(line, command_exit, sizeof(command_exit)) == 0)
-		{
-			esb_finish_pair();
 		}
 		else if (memcmp(line, command_clear, sizeof(command_clear)) == 0) 
 		{
