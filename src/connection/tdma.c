@@ -21,6 +21,7 @@
 	THE SOFTWARE.
 */
 #include "tdma.h"
+#include <zephyr/kernel.h>
 
 uint8_t tdma_tracker_to_window[MAX_TRACKERS] = {TDMA_WRONG_WINDOW};
 uint8_t tdma_windows[TDMA_MAX_TRACKERS] = {TDMA_WRONG_WINDOW};
