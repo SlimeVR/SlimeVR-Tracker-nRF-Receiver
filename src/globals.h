@@ -20,15 +20,14 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#ifndef SLIMENRF_GLOBALS
-#define SLIMENRF_GLOBALS
+#pragma once
 
 #include <zephyr/logging/log.h>
 
 #include "retained.h"
 
 #ifndef CONFIG_SOC_NRF52820
-#define MAX_TRACKERS 256
+#define MAX_TRACKERS 64
 #else
 #define MAX_TRACKERS 24
 #endif
@@ -43,5 +42,3 @@
 // TODO: move to esb
 extern uint8_t stored_trackers;
 extern uint64_t stored_tracker_addr[MAX_TRACKERS];
-
-#endif

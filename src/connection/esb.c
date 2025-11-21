@@ -31,8 +31,11 @@
 #include "esb.h"
 
 static struct esb_payload rx_payload;
-//static struct esb_payload tx_payload = ESB_CREATE_PAYLOAD(0,
-//														  0, 0, 0, 0, 0, 0, 0, 0);
+static struct esb_payload tx_payload_test = ESB_CREATE_PAYLOAD(0,
+														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+														0, 0);
 //static struct esb_payload tx_payload_timer = ESB_CREATE_PAYLOAD(0,
 //														  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
@@ -42,17 +45,27 @@ uint16_t packets_count[255] = {0};
 uint8_t packets_lost[255] = {0};
 uint64_t new_paired_address = 0;
 
+uint32_t last_reset_time = 0;
+uint32_t packets_received = 0;
+bool test_packet_acked = false;
+
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
+
+int32_t tdma_timer_offset = 0;
+int32_t tdma_timer_offset_static = -3;
+uint8_t tracker_window = 0;
+uint32_t packet_sent_time = 0;
+uint8_t skip = 0;
 
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
 // Also must not execute any sys calls like sys_write and etc.
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload) {
 	// Handle new pairing requests
-	if(data_length > 7 && pipe_id == 0 && new_paired_address == 0) {
+	if(data_length == 8 && pipe_id == 0 && new_paired_address == 0) {
 		// make sure the packet is valid
 		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6);
 		if (checksum == 0)
@@ -88,11 +101,68 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		memcpy(&ack_payload->data[2], addr, 6);
 		ack_payload->length = 8;
 		*has_ack_payload = true;
-	} else if(pipe_id > 0) {
-		// TODO : Send data if we have for this tracker
-		// TODO : Check tracker's timing window and send it offset for TDMA
+	} else if(data_length == 32) {
+		// For testing purposes! :O
+		if(pdu_data[0] != 0) {
+			memcpy(ack_payload->data, pdu_data, data_length);
+			ack_payload->data[0] = 0; // Set first byte to 0 so we don't run packets in circles
+			ack_payload->length = data_length;
+			*has_ack_payload = true;
+		} else {
+			test_packet_acked = true;
+		}
+		packets_received++;
+		if(last_reset_time + 1000 < k_uptime_get_32()) {
+			uint32_t time = k_uptime_get_32() - last_reset_time;
+			last_reset_time = k_uptime_get_32();
+			LOG_INF("ACK Received %d packets in %d ms (%.2f packets/s) (%.3f KB/s)", packets_received, time, packets_received / (time / 1000.0f), packets_received / (time / 1000.0f) * 32.0f / 1024.0f);
+			packets_received = 0;
+		}
+	}
+	if(pipe_id > 0 || pdu_data[0] == ESB_TEST_PREAMBLE) {
+		// Check tracker's timing window and send its offset for TDMA
+		uint32_t tdma_timer = tdma_get_timer();
+		uint8_t tracker_window = 0;
+		if(pipe_id > 0) {
+			// Tracker ID is always at byte 1
+			uint8_t tracker_id = pdu_data[1];
+			if(tracker_id == 255) {
+				// Not tracker packet, skip
+				return;
+			}
+			tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
+			if(tracker_window == TDMA_WRONG_WINDOW) {
+				// No windows left for this tracker, reject it
+				ack_payload->data[0] = ESB_CONTROL_PREAMBLE;
+				ack_payload->data[1] = ESB_PACKET_CONTROL_NO_WINDOWS; // No Windows (4)
+				ack_payload->length = 2;
+				*has_ack_payload = true;
+				return;
+			}
+		}
+		uint32_t current_slot = tdma_get_slot(tdma_timer);
+		uint8_t current_window = tdma_get_window(current_slot);
+		if(!tdma_is_dongle_window(current_slot) && current_window == tracker_window) {
+			// Tracker sent data at the correct time, we can send data to it if we have
+			// TODO : Send data if we have for this tracker
+		}
+
+		ack_payload->data[0] = ESB_CONTROL_PREAMBLE;
+		ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (5)
+		ack_payload->data[2] = tracker_window;
+		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
+		ack_payload->length = 8;
+		*has_ack_payload = true;
+		if(current_slot < 24) {
+			LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
+		} else {
+			if(tracker_window != current_window)
+				LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
+		}
 	}
 }
+
+bool is_synchronized = false;
 
 void event_handler(struct esb_evt const *event)
 {
@@ -119,8 +189,41 @@ void event_handler(struct esb_evt const *event)
 				LOG_ERR("Error while reading rx packet: %d", err);
 				return;
 			}
+			if((rx_payload.length == 32 || rx_payload.length == 8) && (rx_payload.noack || rx_payload.data[0] == 0 || rx_payload.data[0] == 0xCF || rx_payload.data[0] == 0xCD)) {
+				// For testing purposes! :O
+				packets_received++;
+				if(last_reset_time + 1000 < k_uptime_get_32()) {
+					uint32_t time = k_uptime_get_32() - last_reset_time;
+					last_reset_time = k_uptime_get_32();
+					LOG_INF("NO-ACK Received %d packets in %d ms (%.2f packets/s) (%.3f KB/s)", packets_received, time, packets_received / (time / 1000.0f), packets_received / (time / 1000.0f) * 32.0f / 1024.0f);
+					packets_received = 0;
+				}
+			}
+
+			if(rx_payload.data[0] == 0xCD) {
+				// Control packet received
+				switch(rx_payload.data[1]) {
+					case 5: // Window Info
+					uint32_t current_from_slot0 = (packet_sent_time + tdma_timer_offset) & 0x7FFF;
+					tracker_window = rx_payload.data[2];
+					uint32_t received_from_slot0 = *((uint32_t *) &rx_payload.data[3]);
+					int32_t diff = received_from_slot0 - current_from_slot0;
+					int32_t new_offset = tdma_timer_offset + diff / 2;
+					if(new_offset == diff)
+						is_synchronized = true;
+					// TODO Have a rolling average to remove outliers?
+					if(skip++ == 0)
+						LOG_INF("Timer offset diff received: %d, new offset %d -> %d (+%d)", diff, tdma_timer_offset, new_offset, tdma_timer_offset_static);
+					tdma_timer_offset = new_offset;
+					continue;
+				default:
+					LOG_INF("Control packet %d received", rx_payload.data[1]);
+				}
+			}
+
 			if(rx_payload.pipe == 0)
 				continue; // Handled in ACK handler
+				
 			switch (rx_payload.length)
 			{
 			case 21: // has sequence number
@@ -136,10 +239,12 @@ void event_handler(struct esb_evt const *event)
 				}
 				// Fall-throught
 			case 16:
-				uint8_t imu_id = rx_payload.data[1];
-				if (imu_id >= stored_trackers) // not a stored tracker
+				uint8_t tracker_id = rx_payload.data[1];
+				if (tracker_id >= stored_trackers) // not a stored tracker
 					continue;
-				if (rx_payload.data[0] > 223) // reserved for receiver only
+				if (rx_payload.data[0] > ESB_CONTROL_PREAMBLE) // reserved for receiver only
+					break;
+				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
 					break;
 				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
 				break;
@@ -220,12 +325,13 @@ int esb_initialize(bool tx)
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = 30;
-		config.retransmit_delay = 425;
+		config.retransmit_delay = 600;
 		config.retransmit_count = 0;
 		config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
 //		config.use_fast_ramp_up = true;
+		config.ack_handler = ack_handler;
 	}
 	else
 	{
@@ -235,7 +341,7 @@ int esb_initialize(bool tx)
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = 30;
-		config.retransmit_delay = 425;
+		config.retransmit_delay = 600;
 		// config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
@@ -363,8 +469,35 @@ void esb_write_sync(uint16_t led_clock)
 	esb_write_payload(&tx_payload_sync);
 }
 
+
+uint32_t last_slot = 32757;
+
+bool is_our_window() {
+
+	int32_t current_from_slot0 = (k_cycle_get_32() + tdma_timer_offset + tdma_timer_offset_static) & 0x7FFF;
+	uint32_t current_slot = (current_from_slot0 >> 5);
+	if(last_slot == current_slot || current_slot < 24)
+		return false;
+	uint8_t current_window = (current_slot - 24) % 10;
+	if(current_window == tracker_window) {
+		last_slot = current_slot;
+		return true;
+	}
+	return false;
+}
+
+bool is_slot_0() {
+	int32_t current_from_slot0 = (k_cycle_get_32() + tdma_timer_offset + tdma_timer_offset_static) & 0x7FFF;
+	uint32_t current_slot = (current_from_slot0 >> 5);
+	return current_slot < 24;
+}
+
+#define TEST_TX false
+
 static void esb_thread(void)
 {
+	tdma_init();
+
 	clocks_start();
 
 	sys_read(STORED_TRACKERS, &stored_trackers, sizeof(stored_trackers));
@@ -372,9 +505,29 @@ static void esb_thread(void)
 		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
 
+#if defined(TEST_TX) && TEST_TX
+	esb_set_addr();
+	esb_initialize(true);
+	tx_payload_test.noack = false;
+	tx_payload_test.data[0] = 0xCF;
+	while(1) {
+		test_packet_acked = false;
+		// Let's see how far can we push it...
+		//for(int i = 1; i < 32; ++i)
+		//	tx_payload_test.data[i]++;
+		esb_write_payload(&tx_payload_test);
+		while(!is_our_window())
+			k_usleep(1);
+		packet_sent_time = k_cycle_get_32();
+		esb_start_tx();
+	}
+#endif
+
 	esb_set_addr();
 	esb_initialize(false);
 	esb_start_rx();
+
+	bool was_slot_0 = false;
 
 	while(1) {
 		if(new_paired_address != 0) {
@@ -382,6 +535,37 @@ static void esb_thread(void)
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 			new_paired_address = 0;
 		}
-		k_msleep(50);
+		if(is_slot_0()) {
+			if(!was_slot_0) {
+				was_slot_0 = true;
+				//LOG_INF("Moving to RX");
+				esb_initialized = false;
+				esb_disable();
+				esb_initialize(true);
+				tx_payload_test.noack = false;
+				tx_payload_test.data[0] = 0xCD;
+				tx_payload_test.data[2] = 3;
+				uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
+				memcpy(&tx_payload_test.data[3], addr, 6);
+				tx_payload_test.data[9] = 1;
+				tx_payload_test.data[10] = 0;
+				tx_payload_test.data[11] = 0;
+				tx_payload_test.data[12] = 0;
+				esb_write_payload(&tx_payload_test);
+				esb_start_tx();
+				while(!esb_is_idle())
+					k_msleep(1);
+				//LOG_INF("Returning to TX");
+				
+				esb_initialized = false;
+				esb_disable();
+				esb_set_addr();
+				esb_initialize(false);
+				esb_start_rx();
+			}
+		} else {
+			was_slot_0 = false;
+			k_msleep(10);
+		}
 	}
 }

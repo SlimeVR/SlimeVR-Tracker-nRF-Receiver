@@ -20,62 +20,23 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
+#pragma once
 #include <stdint.h>
 #include "globals.h"
 
 #define TDMA_TIMER_SIZE 32768
-#define TDMA_WINDOW_SIZE 16
-#define TDMA_WINDOWS_COUNT 2048
-#define TDMA_WINDOWS_SHIFT 11
-#define TDMA_MAX_TRACKERS 32
+#define TDMA_TIMER_MASK 0x7FFF
+#define TDMA_SLOT_SIZE 32
+#define TDMA_SLOT_SHIFT 5
+#define TDMA_SLOTS_COUNT 1024
+#define TDMA_MAX_TRACKERS 10
+#define TDMA_WRONG_WINDOW 255
 
-uint8_t tdma_tracker_slots = 8;
-uint8_t tdma_window_allocations = 256;
-int8_t tdma_tracker_id_to_slot[MAX_TRACKERS] = {-1};
-uint8_t tdma_next_tracker_slot = 0;
-
-bool tdma_adjust_window_size(uint8_t trackers_amount) {
-    if(trackers_amount <= 8)
-        tdma_tracker_slots = 8;
-    else if(trackers_amount <= 16)
-        tdma_tracker_slots = 16;
-    else
-        tdma_tracker_slots = 32;
-    tdma_window_allocations = TDMA_WINDOWS_COUNT / tdma_tracker_slots;
-    return trackers_amount <= tdma_tracker_slots;
-}
-
-uint16_t tdma_get_window_from_timer(uint16_t timer) {
-    return timer >> TDMA_WINDOWS_SHIFT;
-}
-
-uint8_t tdma_get_tracker_slot_from_timer(uint16_t timer) {
-    return tdma_get_window_from_timer(timer) % tdma_tracker_slots;
-}
-
-uint16_t tdma_get_tracker_slot_error(uint16_t timer, uint8_t tracker_slot) {
-    uint8_t correct_tracker = tdma_get_tracker_slot_from_timer(timer);
-    if(correct_tracker == tracker_slot)
-        return 0;
-    while(correct_tracker < tracker_slot) // We always go to the future
-        correct_tracker += tdma_tracker_slots;
-    return timer - (correct_tracker - tracker_slot) * TDMA_WINDOW_SIZE;
-}
-
-int8_t tdma_tracker_slot_from_id(uint8_t tracker_id) {
-    return tdma_tracker_id_to_slot[tracker_id];
-}
-
-int8_t tdma_insert_tracker(uint8_t tracker_id) {
-    int8_t current_slot = tdma_tracker_slot_from_id(tracker_id);
-    if(current_slot >= 0)
-        return current_slot;
-    if(!tdma_adjust_window_size(tdma_next_tracker_slot + 1))
-        return -1;
-    tdma_tracker_id_to_slot[tracker_id] = tdma_next_tracker_slot;
-    return tdma_next_tracker_slot++;
-}
-
-bool tdma_is_dongle_order(uint16_t timer) {
-    return tdma_get_window_from_timer(timer) < tdma_tracker_slots;
-}
+void tdma_init();
+uint32_t tdma_get_timer();
+uint32_t tdma_get_slot(uint32_t timer);
+uint8_t tdma_get_window(uint32_t slot);
+bool tdma_is_dongle_window(uint32_t slot);
+uint8_t tdma_get_tracker_window(uint8_t tracker_id);
+uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id);
+uint8_t tdma_touch_tracker(uint8_t tracker_id);
