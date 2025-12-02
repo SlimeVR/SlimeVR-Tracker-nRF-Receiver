@@ -74,6 +74,15 @@ uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
     return window;
 }
 
+bool tdma_has_empty_windows() {
+     for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
+        if(tdma_windows[i] == TDMA_WRONG_WINDOW) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Tracker communicated with the dongle, record last time
 // So we can de-allocated windows for trackers that aren't connected anymore
 uint8_t tdma_touch_tracker(uint8_t tracker_id) {

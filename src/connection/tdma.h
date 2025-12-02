@@ -40,3 +40,4 @@ bool tdma_is_dongle_window(uint32_t slot);
 uint8_t tdma_get_tracker_window(uint8_t tracker_id);
 uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id);
 uint8_t tdma_touch_tracker(uint8_t tracker_id);
+bool tdma_has_empty_windows();
