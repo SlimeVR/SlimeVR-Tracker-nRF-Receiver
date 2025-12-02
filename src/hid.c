@@ -102,7 +102,7 @@ static void send_report(struct k_work *work)
 		// Calculate how many reports we have available
 		int available_reports = write_idx - read_idx;
 		if (available_reports < 0) available_reports += MAX_TRACKERS;
-		size_t reports_to_send = (size_t)((available_reports > HID_EP_REPORT_COUNT) ? HID_EP_REPORT_COUNT : available_reports);
+		size_t reports_to_send = (size_t) MIN(available_reports, HID_EP_REPORT_COUNT);
 
 		int epind;
 		// Copy existing data to buffer

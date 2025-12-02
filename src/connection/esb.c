@@ -31,13 +31,8 @@
 #include "esb.h"
 
 static struct esb_payload rx_payload;
-static struct esb_payload tx_payload_test = ESB_CREATE_PAYLOAD(0,
-														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-														0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-														0, 0);
-//static struct esb_payload tx_payload_timer = ESB_CREATE_PAYLOAD(0,
-//														  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
+														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0);
 uint8_t sequences[255] = {0};
@@ -66,6 +61,7 @@ uint8_t skip = 0;
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload) {
 	// Handle new pairing requests
 	if(data_length == 8 && pipe_id == 0 && new_paired_address == 0) {
+		// TODO Implement proper pairing by packet header and such
 		// make sure the packet is valid
 		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6);
 		if (checksum == 0)
@@ -101,23 +97,6 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		memcpy(&ack_payload->data[2], addr, 6);
 		ack_payload->length = 8;
 		*has_ack_payload = true;
-	} else if(data_length == 32) {
-		// For testing purposes! :O
-		if(pdu_data[0] != 0) {
-			memcpy(ack_payload->data, pdu_data, data_length);
-			ack_payload->data[0] = 0; // Set first byte to 0 so we don't run packets in circles
-			ack_payload->length = data_length;
-			*has_ack_payload = true;
-		} else {
-			test_packet_acked = true;
-		}
-		packets_received++;
-		if(last_reset_time + 1000 < k_uptime_get_32()) {
-			uint32_t time = k_uptime_get_32() - last_reset_time;
-			last_reset_time = k_uptime_get_32();
-			LOG_INF("ACK Received %d packets in %d ms (%.2f packets/s) (%.3f KB/s)", packets_received, time, packets_received / (time / 1000.0f), packets_received / (time / 1000.0f) * 32.0f / 1024.0f);
-			packets_received = 0;
-		}
 	}
 	if(pipe_id > 0 || pdu_data[0] == ESB_TEST_PREAMBLE) {
 		// Check tracker's timing window and send its offset for TDMA
@@ -153,12 +132,15 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
 		ack_payload->length = 8;
 		*has_ack_payload = true;
+		// TODO : Track TDMA misses in debug mode
+		/*
 		if(current_slot < 24) {
 			LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
 		} else {
 			if(tracker_window != current_window)
 				LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
 		}
+		*/
 	}
 }
 
@@ -180,30 +162,17 @@ void event_handler(struct esb_evt const *event)
 		while (!err) // zero, rx success
 		{
 			err = esb_read_rx_payload(&rx_payload);
-			if (err == -ENODATA)
-			{
+			if (err == -ENODATA) {
 				return;
-			}
-			else if (err)
-			{
+			} else if (err) {
 				LOG_ERR("Error while reading rx packet: %d", err);
 				return;
-			}
-			if((rx_payload.length == 32 || rx_payload.length == 8) && (rx_payload.noack || rx_payload.data[0] == 0 || rx_payload.data[0] == 0xCF || rx_payload.data[0] == 0xCD)) {
-				// For testing purposes! :O
-				packets_received++;
-				if(last_reset_time + 1000 < k_uptime_get_32()) {
-					uint32_t time = k_uptime_get_32() - last_reset_time;
-					last_reset_time = k_uptime_get_32();
-					LOG_INF("NO-ACK Received %d packets in %d ms (%.2f packets/s) (%.3f KB/s)", packets_received, time, packets_received / (time / 1000.0f), packets_received / (time / 1000.0f) * 32.0f / 1024.0f);
-					packets_received = 0;
-				}
 			}
 
 			if(rx_payload.data[0] == 0xCD) {
 				// Control packet received
 				switch(rx_payload.data[1]) {
-					case 5: // Window Info
+				case 5: // Window Info
 					uint32_t current_from_slot0 = (packet_sent_time + tdma_timer_offset) & 0x7FFF;
 					tracker_window = rx_payload.data[2];
 					uint32_t received_from_slot0 = *((uint32_t *) &rx_payload.data[3]);
@@ -226,17 +195,12 @@ void event_handler(struct esb_evt const *event)
 				
 			switch (rx_payload.length)
 			{
-			case 21: // has sequence number
-				// We ignore it
+			case 21: // has sequence number & crc32
+			case 17: // has sequence number
+				// TODO Track packet loss
 				// Fall-throught
 			case 20: // has crc32
-				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
-				uint32_t *crc_ptr = (uint32_t *)&rx_payload.data[16];
-				if (*crc_ptr != crc_check)
-				{
-					LOG_ERR("Incorrect checksum, computed %08X, received %08X", crc_check, *crc_ptr);
-					break;
-				}
+				// We ignore it
 				// Fall-throught
 			case 16:
 				uint8_t tracker_id = rx_payload.data[1];
@@ -309,6 +273,13 @@ static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
 
 static bool esb_initialized = false;
 
+void esb_deinitialize() {
+	if(!esb_initialized)
+		return;
+	esb_initialized = false;
+	esb_disable();
+}
+
 int esb_initialize(bool tx)
 {
 	if (esb_initialized)
@@ -361,6 +332,9 @@ int esb_initialize(bool tx)
 
 	if (!err)
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
+
+	if (!err)
+		esb_set_rf_channel(79);
 
 	if (err)
 	{
@@ -469,30 +443,26 @@ void esb_write_sync(uint16_t led_clock)
 	esb_write_payload(&tx_payload_sync);
 }
 
-
-uint32_t last_slot = 32757;
-
-bool is_our_window() {
-
-	int32_t current_from_slot0 = (k_cycle_get_32() + tdma_timer_offset + tdma_timer_offset_static) & 0x7FFF;
-	uint32_t current_slot = (current_from_slot0 >> 5);
-	if(last_slot == current_slot || current_slot < 24)
-		return false;
-	uint8_t current_window = (current_slot - 24) % 10;
-	if(current_window == tracker_window) {
-		last_slot = current_slot;
-		return true;
-	}
-	return false;
+bool is_dongle_window() {
+	uint32_t tdma_timer = tdma_get_timer();
+	uint32_t current_slot = tdma_get_slot(tdma_timer);
+	uint8_t current_window = tdma_get_window(current_slot);
+	return tdma_is_dongle_window(current_slot);
 }
 
-bool is_slot_0() {
-	int32_t current_from_slot0 = (k_cycle_get_32() + tdma_timer_offset + tdma_timer_offset_static) & 0x7FFF;
-	uint32_t current_slot = (current_from_slot0 >> 5);
-	return current_slot < 24;
+void prepare_dongle_sate_packet() {
+	tx_payload_dongle_sate.noack = false;
+	tx_payload_dongle_sate.data[0] = 0xCD;
+	tx_payload_dongle_sate.data[2] = 3;
+	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
+	memcpy(&tx_payload_dongle_sate.data[3], addr, 6);
+	uint8_t has_empty_windows_flag = (tdma_has_empty_windows() ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
+	uint8_t force_pairing_flag = (0) << 1; // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
+	tx_payload_dongle_sate.data[9] = has_empty_windows_flag | force_pairing_flag; // Dongle sate flags
+	uint8_t channels_set = 0; // Channels bundle - 4 bits - which channels bundle this dongle hops on
+	uint8_t channel_offset = 0 << 4; // Next channel offset - 4 bits - which channel bundle this dongle will move next after this broadcast
+	tx_payload_dongle_sate.data[10] = channels_set | channel_offset; // Channels
 }
-
-#define TEST_TX false
 
 static void esb_thread(void)
 {
@@ -505,29 +475,11 @@ static void esb_thread(void)
 		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
 
-#if defined(TEST_TX) && TEST_TX
-	esb_set_addr();
-	esb_initialize(true);
-	tx_payload_test.noack = false;
-	tx_payload_test.data[0] = 0xCF;
-	while(1) {
-		test_packet_acked = false;
-		// Let's see how far can we push it...
-		//for(int i = 1; i < 32; ++i)
-		//	tx_payload_test.data[i]++;
-		esb_write_payload(&tx_payload_test);
-		while(!is_our_window())
-			k_usleep(1);
-		packet_sent_time = k_cycle_get_32();
-		esb_start_tx();
-	}
-#endif
-
 	esb_set_addr();
 	esb_initialize(false);
 	esb_start_rx();
 
-	bool was_slot_0 = false;
+	bool was_dongle_window = false;
 
 	while(1) {
 		if(new_paired_address != 0) {
@@ -535,36 +487,26 @@ static void esb_thread(void)
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 			new_paired_address = 0;
 		}
-		if(is_slot_0()) {
-			if(!was_slot_0) {
-				was_slot_0 = true;
-				//LOG_INF("Moving to RX");
-				esb_initialized = false;
-				esb_disable();
+		if(is_dongle_window()) {
+			if(!was_dongle_window) {
+				was_dongle_window = true;
+
+				esb_deinitialize();
 				esb_initialize(true);
-				tx_payload_test.noack = false;
-				tx_payload_test.data[0] = 0xCD;
-				tx_payload_test.data[2] = 3;
-				uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
-				memcpy(&tx_payload_test.data[3], addr, 6);
-				tx_payload_test.data[9] = 1;
-				tx_payload_test.data[10] = 0;
-				tx_payload_test.data[11] = 0;
-				tx_payload_test.data[12] = 0;
-				esb_write_payload(&tx_payload_test);
+
+				prepare_dongle_sate_packet();
+				esb_write_payload(&tx_payload_dongle_sate);
 				esb_start_tx();
+
 				while(!esb_is_idle())
 					k_msleep(1);
-				//LOG_INF("Returning to TX");
 				
-				esb_initialized = false;
-				esb_disable();
-				esb_set_addr();
+				esb_deinitialize();
 				esb_initialize(false);
 				esb_start_rx();
 			}
 		} else {
-			was_slot_0 = false;
+			was_dongle_window = false;
 			k_msleep(10);
 		}
 	}
