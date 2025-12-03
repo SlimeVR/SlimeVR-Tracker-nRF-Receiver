@@ -35,6 +35,8 @@
 // How many packets to receive from one ID in a second before we consider it valid
 #define DETECTION_THRESHOLD 5
 
+#define WRONG_TRACKER_ID 255
+
 // TODO: move to esb
 extern uint8_t stored_trackers;
 extern uint64_t stored_tracker_addr[MAX_TRACKERS];

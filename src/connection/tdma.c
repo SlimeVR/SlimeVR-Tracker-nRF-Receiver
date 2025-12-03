@@ -23,14 +23,14 @@
 #include "tdma.h"
 #include <zephyr/kernel.h>
 
-uint8_t tdma_tracker_to_window[MAX_TRACKERS] = {TDMA_WRONG_WINDOW};
-uint8_t tdma_windows[TDMA_MAX_TRACKERS] = {TDMA_WRONG_WINDOW};
+uint8_t tdma_tracker_to_window[MAX_TRACKERS];
+uint8_t tdma_windows[TDMA_MAX_TRACKERS];
 
 LOG_MODULE_REGISTER(tdma, LOG_LEVEL_INF);
 
 void tdma_init() {
      for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
-        tdma_windows[i] = TDMA_WRONG_WINDOW;
+        tdma_windows[i] = WRONG_TRACKER_ID;
      }
      for(int i = 0; i < MAX_TRACKERS; ++i) {
         tdma_tracker_to_window[i] = TDMA_WRONG_WINDOW;
@@ -76,7 +76,7 @@ uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
 
 bool tdma_has_empty_windows() {
      for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
-        if(tdma_windows[i] == TDMA_WRONG_WINDOW) {
+        if(tdma_windows[i] == WRONG_TRACKER_ID) {
             return true;
         }
     }
