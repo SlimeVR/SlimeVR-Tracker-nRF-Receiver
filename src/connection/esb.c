@@ -55,6 +55,16 @@ uint8_t tracker_window = 0;
 uint32_t packet_sent_time = 0;
 uint8_t skip = 0;
 
+struct con_stat {
+	uint8_t packets_received;
+	uint8_t packets_lost;
+	uint8_t windows_hit;
+	uint8_t windows_missed;
+	uint8_t last_packet_number;
+};
+
+struct con_stat statistics[MAX_TRACKERS];
+
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
 // Also must not execute any sys calls like sys_write and etc.
@@ -102,10 +112,11 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		// Check tracker's timing window and send its offset for TDMA
 		uint32_t tdma_timer = tdma_get_timer();
 		uint8_t tracker_window = 0;
+		uint8_t tracker_id = WRONG_TRACKER_ID;
 		if(pipe_id > 0) {
 			// Tracker ID is always at byte 1
-			uint8_t tracker_id = pdu_data[1];
-			if(tracker_id == 255) {
+			tracker_id = pdu_data[1];
+			if(tracker_id == WRONG_TRACKER_ID) {
 				// Not tracker packet, skip
 				return;
 			}
@@ -132,6 +143,24 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
 		ack_payload->length = 8;
 		*has_ack_payload = true;
+		if(tracker_id != WRONG_TRACKER_ID && pipe_id > 0) {
+			statistics[tracker_id].packets_received++;
+			if(tracker_window != current_window)
+				statistics[tracker_id].windows_missed++;
+			else
+				statistics[tracker_id].windows_hit++;
+			uint8_t packet_number = 0;
+			if(data_length == 17) {
+				packet_number = pdu_data[16];
+			} else if(data_length == 21) {
+				packet_number = pdu_data[20];
+			}
+
+			uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
+			statistics[tracker_id].packets_lost += diff - 1;
+			statistics[tracker_id].last_packet_number = packet_number;
+		}
+
 		// TODO : Track TDMA misses in debug mode
 		/*
 		if(current_slot < 24) {
@@ -334,7 +363,7 @@ int esb_initialize(bool tx)
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
 
 	if (!err)
-		esb_set_rf_channel(79);
+		esb_set_rf_channel(50);
 
 	if (err)
 	{
@@ -490,6 +519,15 @@ static void esb_thread(void)
 		if(is_dongle_window()) {
 			if(!was_dongle_window) {
 				was_dongle_window = true;
+				for(int i = 0; i < MAX_TRACKERS; ++i) {
+					if(statistics[i].packets_received > 0) {
+						LOG_INF("Tracker[%d] stat. Rcvd: %d, Lost: %d, Hit: %d, Miss: %d", i, statistics[i].packets_received, statistics[i].packets_lost, statistics[i].windows_hit, statistics[i].windows_missed);
+					}
+					statistics[i].packets_lost = 0;
+					statistics[i].packets_received = 0;
+					statistics[i].windows_hit = 0;
+					statistics[i].windows_missed = 0;
+				}
 
 				esb_deinitialize();
 				esb_initialize(true);

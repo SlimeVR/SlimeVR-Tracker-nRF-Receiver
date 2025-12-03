@@ -39,6 +39,8 @@
 // Invalid rotation threshold in radians
 #define ROTATION_THRESHOLD 0.52f
 
+#define WRONG_TRACKER_ID 255
+
 // TODO: move to esb
 extern uint8_t stored_trackers;
 extern uint64_t stored_tracker_addr[MAX_TRACKERS];
