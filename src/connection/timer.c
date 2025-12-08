@@ -62,6 +62,6 @@ void timer_init(void) {
     nrfx_timer_compare(&m_timer, NRF_TIMER_CC_CHANNEL1, ticks * 20 / 21, true); // switch to tx
     nrfx_timer_compare(&m_timer, NRF_TIMER_CC_CHANNEL2, ticks * 1 / 21, true); // switch to rx
     nrfx_timer_enable(&m_timer);
-	IRQ_DIRECT_CONNECT(TIMER1_IRQn, 0, nrfx_timer_1_irq_handler, 0);
-	irq_enable(TIMER1_IRQn);
+//	IRQ_DIRECT_CONNECT(TIMER1_IRQn, 0, nrfx_timer_1_irq_handler, 0);
+//	irq_enable(TIMER1_IRQn);
 }
