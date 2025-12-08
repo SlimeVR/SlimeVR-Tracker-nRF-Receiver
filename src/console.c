@@ -166,6 +166,25 @@ static inline void strtolower(char *str) {
 	}
 }
 
+static void print_help(void)
+{
+	printk("\nhelp                         Display this help text\n");
+
+	printk("\ninfo                         Get device information\n");
+	printk("uptime                       Get device uptime\n");
+	printk("list                         Get paired devices\n");
+	printk("reboot                       Soft reset the device\n");
+	printk("\nadd <address>                Manually add a device\n");
+	printk("remove                       Remove last device\n");
+	printk("pair                         Enter pairing mode\n");
+	printk("exit                         Exit pairing mode\n");
+	printk("clear                        Clear stored devices\n");
+#if DFU_EXISTS
+	printk("\ndfu                          Enter DFU bootloader\n");
+#endif
+	printk("\nmeow                         Meow!\n");
+}
+
 static void console_thread(void)
 {
 	console_getline_init();
@@ -174,15 +193,9 @@ static void console_thread(void)
 	k_msleep(100);
 	printk("*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n");
 	printk(FW_STRING);
-	printk("info                         Get device information\n");
-	printk("uptime                       Get device uptime\n");
-	printk("list                         Get paired devices\n");
-	printk("reboot                       Soft reset the device\n");
-	printk("add <address>                Manually add a device\n");
-	printk("remove                       Remove last device\n");
-	printk("pair                         Enter pairing mode\n");
-	printk("exit                         Exit pairing mode\n");
-	printk("clear                        Clear stored devices\n");
+	print_help();
+
+	const char command_help[] = "help";
 
 	const char command_info[] = "info";
 	const char command_uptime[] = "uptime";
@@ -193,15 +206,9 @@ static void console_thread(void)
 	const char command_pair[] = "pair";
 	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
-
 #if DFU_EXISTS
-	printk("dfu                          Enter DFU bootloader\n");
-
 	const char command_dfu[] = "dfu";
 #endif
-
-	printk("meow                         Meow!\n");
-
 	const char command_meow[] = "meow";
 
 	while (1) {
@@ -217,7 +224,11 @@ static void console_thread(void)
 			strtolower(argv[1]); // lower case the first argument
 		// only care that the first words are matchable
 
-		if (strcmp(line, command_info) == 0)
+		if (strcmp(argv[0], command_help) == 0)
+		{
+			print_help();
+		}
+		else if (strcmp(argv[0], command_info) == 0)
 		{
 			print_info();
 		}
@@ -261,7 +272,7 @@ static void console_thread(void)
 		{
 			esb_finish_pair();
 		}
-		else if (strcmp(line, command_clear) == 0) 
+		else if (strcmp(line, command_clear) == 0)
 		{
 			esb_clear();
 		}
@@ -277,7 +288,7 @@ static void console_thread(void)
 #endif
 		}
 #endif
-		else if (strcmp(line, command_meow) == 0) 
+		else if (strcmp(line, command_meow) == 0)
 		{
 			print_meow();
 		}
