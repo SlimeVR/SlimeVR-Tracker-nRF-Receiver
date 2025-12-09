@@ -41,3 +41,17 @@ uint8_t tdma_get_tracker_window(uint8_t tracker_id);
 uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id);
 uint8_t tdma_touch_tracker(uint8_t tracker_id);
 bool tdma_has_empty_windows();
+
+inline static uint16_t tdma_get_row(uint32_t slot) {
+	if(slot < 24)
+		return 0;
+	return (slot - 24) / 100;
+}
+
+inline static uint32_t tdma_get_slot_time(uint32_t slot) {
+	return slot << TDMA_SLOT_SHIFT;
+}
+
+inline static uint32_t tdma_get_slot_from_window(uint16_t row, uint8_t window) {
+	return ((row * 100) + 24) + window;
+}
