@@ -63,7 +63,16 @@ struct con_stat {
 	uint8_t last_packet_number;
 };
 
+struct packet_stat {
+	uint8_t tracker_id;
+	uint32_t timer;
+	uint8_t rcv_window;
+	uint8_t corect_window;
+};
+
 struct con_stat statistics[MAX_TRACKERS];
+struct packet_stat packets_statistics[2048];
+uint16_t next_packet_statistics = 0;
 
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
@@ -141,9 +150,14 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (5)
 		ack_payload->data[2] = tracker_window;
 		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
+
+		ack_payload->data[7] = 0; // Packet ID we're replying to
+
 		ack_payload->length = 8;
 		*has_ack_payload = true;
-		if(tracker_id != WRONG_TRACKER_ID && pipe_id > 0) {
+
+
+		if(pipe_id > 0) {
 			statistics[tracker_id].packets_received++;
 			if(tracker_window != current_window)
 				statistics[tracker_id].windows_missed++;
@@ -155,21 +169,24 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			} else if(data_length == 21) {
 				packet_number = pdu_data[20];
 			}
+			ack_payload->data[7] = packet_number;
 
 			uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
 			statistics[tracker_id].packets_lost += diff - 1;
 			statistics[tracker_id].last_packet_number = packet_number;
-		}
 
-		// TODO : Track TDMA misses in debug mode
-		/*
-		if(current_slot < 24) {
-			LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
-		} else {
-			if(tracker_window != current_window)
-				LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
+			uint16_t packet_n = next_packet_statistics++;
+			packets_statistics[packet_n].tracker_id = tracker_id;
+			packets_statistics[packet_n].corect_window = tracker_window;
+			packets_statistics[packet_n].rcv_window = current_window;
+			packets_statistics[packet_n].timer = tdma_timer;
+			// if(current_slot < 24) {
+			// 	LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
+			// } else {
+			// 	if(tracker_window != current_window)
+			// 		LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
+			// }
 		}
-		*/
 	}
 }
 
@@ -475,7 +492,6 @@ void esb_write_sync(uint16_t led_clock)
 bool is_dongle_window() {
 	uint32_t tdma_timer = tdma_get_timer();
 	uint32_t current_slot = tdma_get_slot(tdma_timer);
-	uint8_t current_window = tdma_get_window(current_slot);
 	return tdma_is_dongle_window(current_slot);
 }
 
@@ -521,13 +537,19 @@ static void esb_thread(void)
 				was_dongle_window = true;
 				for(int i = 0; i < MAX_TRACKERS; ++i) {
 					if(statistics[i].packets_received > 0) {
-						LOG_INF("Tracker[%d] stat. Rcvd: %d, Lost: %d, Hit: %d, Miss: %d", i, statistics[i].packets_received, statistics[i].packets_lost, statistics[i].windows_hit, statistics[i].windows_missed);
+						LOG_INF("Tracker[%d (%d)] stat. Rcvd: %d, Lost: %d, Hit: %d, Miss: %d", i, tdma_get_tracker_window(i), statistics[i].packets_received, statistics[i].packets_lost, statistics[i].windows_hit, statistics[i].windows_missed);
 					}
 					statistics[i].packets_lost = 0;
 					statistics[i].packets_received = 0;
 					statistics[i].windows_hit = 0;
 					statistics[i].windows_missed = 0;
 				}
+				// for(int i = 0; i < ((int) next_packet_statistics) - 1; ++i) {
+				// 	if(packets_statistics[i].rcv_window != packets_statistics[i].corect_window)
+				// 		printk("[%d]:%dt,%d %d/%d", i, packets_statistics[i].timer, packets_statistics[i].tracker_id, packets_statistics[i].rcv_window, packets_statistics[i].corect_window);
+				// }
+				next_packet_statistics = 0;
+				// printk("\n");
 
 				esb_deinitialize();
 				esb_initialize(true);
@@ -542,6 +564,9 @@ static void esb_thread(void)
 				esb_deinitialize();
 				esb_initialize(false);
 				esb_start_rx();
+				if(!is_dongle_window()) {
+					LOG_WRN("Took too long in dongle window!");
+				}
 			}
 		} else {
 			was_dongle_window = false;
