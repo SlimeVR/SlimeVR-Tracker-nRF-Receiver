@@ -150,19 +150,12 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (5)
 		ack_payload->data[2] = tracker_window;
 		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
-
 		ack_payload->data[7] = 0; // Packet ID we're replying to
 
 		ack_payload->length = 8;
 		*has_ack_payload = true;
 
-
 		if(pipe_id > 0) {
-			statistics[tracker_id].packets_received++;
-			if(tracker_window != current_window)
-				statistics[tracker_id].windows_missed++;
-			else
-				statistics[tracker_id].windows_hit++;
 			uint8_t packet_number = 0;
 			if(data_length == 17) {
 				packet_number = pdu_data[16];
@@ -171,15 +164,22 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			}
 			ack_payload->data[7] = packet_number;
 
-			uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
-			statistics[tracker_id].packets_lost += diff - 1;
-			statistics[tracker_id].last_packet_number = packet_number;
+			// statistics[tracker_id].packets_received++;
+			// if(tracker_window != current_window)
+			// 	statistics[tracker_id].windows_missed++;
+			// else
+			// 	statistics[tracker_id].windows_hit++;
 
-			uint16_t packet_n = next_packet_statistics++;
-			packets_statistics[packet_n].tracker_id = tracker_id;
-			packets_statistics[packet_n].corect_window = tracker_window;
-			packets_statistics[packet_n].rcv_window = current_window;
-			packets_statistics[packet_n].timer = tdma_timer;
+			// uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
+			// statistics[tracker_id].packets_lost += diff - 1;
+			// statistics[tracker_id].last_packet_number = packet_number;
+
+			// uint16_t packet_n = next_packet_statistics++;
+			// packets_statistics[packet_n].tracker_id = tracker_id;
+			// packets_statistics[packet_n].corect_window = tracker_window;
+			// packets_statistics[packet_n].rcv_window = current_window;
+			// packets_statistics[packet_n].timer = tdma_timer;
+			// LOG_INF("P %d T %d @ %d t (%d / %d w, %d s) (%d off) N %d", pdu_data[0], tracker_id, tdma_timer, current_window, tracker_window, current_slot, tdma_timer - tdma_get_slot_time(current_slot), packet_number);
 			// if(current_slot < 24) {
 			// 	LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
 			// } else {
@@ -535,20 +535,20 @@ static void esb_thread(void)
 		if(is_dongle_window()) {
 			if(!was_dongle_window) {
 				was_dongle_window = true;
-				for(int i = 0; i < MAX_TRACKERS; ++i) {
-					if(statistics[i].packets_received > 0) {
-						LOG_INF("Tracker[%d (%d)] stat. Rcvd: %d, Lost: %d, Hit: %d, Miss: %d", i, tdma_get_tracker_window(i), statistics[i].packets_received, statistics[i].packets_lost, statistics[i].windows_hit, statistics[i].windows_missed);
-					}
-					statistics[i].packets_lost = 0;
-					statistics[i].packets_received = 0;
-					statistics[i].windows_hit = 0;
-					statistics[i].windows_missed = 0;
-				}
+				// for(int i = 0; i < MAX_TRACKERS; ++i) {
+				// 	if(statistics[i].packets_received > 0) {
+				// 		LOG_INF("Tracker[%d (%d)] stat. Rcvd: %d, Lost: %d, Hit: %d, Miss: %d", i, tdma_get_tracker_window(i), statistics[i].packets_received, statistics[i].packets_lost, statistics[i].windows_hit, statistics[i].windows_missed);
+				// 	}
+				// 	statistics[i].packets_lost = 0;
+				// 	statistics[i].packets_received = 0;
+				// 	statistics[i].windows_hit = 0;
+				// 	statistics[i].windows_missed = 0;
+				// }
 				// for(int i = 0; i < ((int) next_packet_statistics) - 1; ++i) {
 				// 	if(packets_statistics[i].rcv_window != packets_statistics[i].corect_window)
 				// 		printk("[%d]:%dt,%d %d/%d", i, packets_statistics[i].timer, packets_statistics[i].tracker_id, packets_statistics[i].rcv_window, packets_statistics[i].corect_window);
 				// }
-				next_packet_statistics = 0;
+				// next_packet_statistics = 0;
 				// printk("\n");
 
 				esb_deinitialize();
