@@ -30,6 +30,8 @@
 
 #include "esb.h"
 
+#define ESB_CHANNEL 53
+
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
 														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -353,7 +355,6 @@ int esb_initialize(bool tx)
 		config.ack_handler = ack_handler;
 	}
 
-	LOG_INF("Initializing ESB, %sX mode", tx ? "T" : "R");
 	err = esb_init(&config);
 
 	if (!err)
@@ -361,7 +362,7 @@ int esb_initialize(bool tx)
 		esb_set_base_address_0(base_addr_0);
 		esb_set_base_address_1(base_addr_1);
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
-		esb_set_rf_channel(50);
+		esb_set_rf_channel(ESB_CHANNEL);
 	}
 	else
 	{
@@ -369,6 +370,9 @@ int esb_initialize(bool tx)
 		set_status(SYS_STATUS_CONNECTION_ERROR, true);
 		return err;
 	}
+	int32_t ch;
+	esb_get_rf_channel(&ch);
+	LOG_INF("Initialized ESB, %sX mode ch %d", tx ? "T" : "R", ch);
 
 	esb_initialized = true;
 	return 0;
