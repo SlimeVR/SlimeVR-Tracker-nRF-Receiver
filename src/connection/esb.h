@@ -41,6 +41,8 @@ int esb_initialize(bool);
 
 void esb_set_addr(void);
 
+int esb_get_frequency(void);
+
 void esb_add_pair(uint64_t addr, bool checksum);
 void esb_pop_pair(void);
 

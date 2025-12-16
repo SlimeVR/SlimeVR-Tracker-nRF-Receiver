@@ -398,6 +398,12 @@ inline void esb_set_addr(void)
 	memcpy(addr_prefix, discovery_addr_prefix, sizeof(addr_prefix));
 }
 
+int esb_get_frequency(void) {
+	uint32_t channel;
+	esb_get_rf_channel(&channel);
+	return 2400UL + channel; // MHz
+}
+
 void esb_add_pair(uint64_t addr, bool checksum)
 {
 	int id = stored_trackers;
