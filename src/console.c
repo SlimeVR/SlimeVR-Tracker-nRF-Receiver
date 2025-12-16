@@ -120,6 +120,7 @@ static void print_info(void)
 	printk("Target: " CONFIG_BOARD_TARGET "\n");
 
 	printk("\nDevice address: %012llX\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
+	printk("Channel frequency: %d\n", esb_get_frequency());
 }
 
 static void print_uptime(void)
