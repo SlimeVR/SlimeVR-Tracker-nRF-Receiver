@@ -63,16 +63,16 @@ struct con_stat {
 	uint8_t last_packet_number;
 };
 
-struct packet_stat {
-	uint8_t tracker_id;
-	uint32_t timer;
-	uint8_t rcv_window;
-	uint8_t corect_window;
-};
+// struct packet_stat {
+// 	uint8_t tracker_id;
+// 	uint32_t timer;
+// 	uint8_t rcv_window;
+// 	uint8_t corect_window;
+// };
 
 struct con_stat statistics[MAX_TRACKERS];
-struct packet_stat packets_statistics[2048];
-uint16_t next_packet_statistics = 0;
+// struct packet_stat packets_statistics[2048];
+// uint16_t next_packet_statistics = 0;
 
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
@@ -164,15 +164,15 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			}
 			ack_payload->data[7] = packet_number;
 
-			// statistics[tracker_id].packets_received++;
-			// if(tracker_window != current_window)
-			// 	statistics[tracker_id].windows_missed++;
-			// else
-			// 	statistics[tracker_id].windows_hit++;
+			statistics[tracker_id].packets_received++;
+			if(tracker_window != current_window)
+				statistics[tracker_id].windows_missed++;
+			else
+				statistics[tracker_id].windows_hit++;
 
-			// uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
-			// statistics[tracker_id].packets_lost += diff - 1;
-			// statistics[tracker_id].last_packet_number = packet_number;
+			uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
+			statistics[tracker_id].packets_lost += diff - 1;
+			statistics[tracker_id].last_packet_number = packet_number;
 
 			// uint16_t packet_n = next_packet_statistics++;
 			// packets_statistics[packet_n].tracker_id = tracker_id;
@@ -256,6 +256,17 @@ void event_handler(struct esb_evt const *event)
 					break;
 				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
 					break;
+				if(rx_payload.data[0] == 3) { // status
+					// Fill in packet lost statistics in status packet
+					rx_payload.data[4] = statistics[tracker_id].packets_received;
+					rx_payload.data[5] = statistics[tracker_id].packets_lost;
+					rx_payload.data[6] = statistics[tracker_id].windows_hit;
+					rx_payload.data[7] = statistics[tracker_id].windows_missed;
+					statistics[tracker_id].packets_lost = 0;
+					statistics[tracker_id].packets_received = 0;
+					statistics[tracker_id].windows_hit = 0;
+					statistics[tracker_id].windows_missed = 0;
+				}
 				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
 				break;
 			default:
@@ -380,7 +391,7 @@ int esb_initialize(bool tx)
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
 
 	if (!err)
-		esb_set_rf_channel(50);
+		esb_set_rf_channel(74);
 
 	if (err)
 	{
