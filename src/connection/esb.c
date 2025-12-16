@@ -35,14 +35,13 @@ static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
 														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0);
-uint8_t sequences[255] = {0};
-uint16_t packets_count[255] = {0};
-uint8_t packets_lost[255] = {0};
-uint64_t new_paired_address = 0;
+static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};\
+static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
 
-uint32_t last_reset_time = 0;
-uint32_t packets_received = 0;
-bool test_packet_acked = false;
+static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
+
+static bool esb_initialized = false;
+uint64_t new_paired_address = 0;
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
@@ -117,7 +116,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		ack_payload->length = 8;
 		*has_ack_payload = true;
 	}
-	if(pipe_id > 0 || pdu_data[0] == ESB_TEST_PREAMBLE) {
+	if(pipe_id > 0) {
 		// Check tracker's timing window and send its offset for TDMA
 		uint32_t tdma_timer = tdma_get_timer();
 		uint8_t tracker_window = 0;
@@ -215,23 +214,11 @@ void event_handler(struct esb_evt const *event)
 				return;
 			}
 
-			if(rx_payload.data[0] == 0xCD) {
+			if(rx_payload.data[0] == ESB_CONTROL_PREAMBLE) {
 				// Control packet received
 				switch(rx_payload.data[1]) {
-				case 5: // Window Info
-					uint32_t current_from_slot0 = (packet_sent_time + tdma_timer_offset) & 0x7FFF;
-					tracker_window = rx_payload.data[2];
-					uint32_t received_from_slot0 = *((uint32_t *) &rx_payload.data[3]);
-					int32_t diff = received_from_slot0 - current_from_slot0;
-					int32_t new_offset = tdma_timer_offset + diff / 2;
-					if(new_offset == diff)
-						is_synchronized = true;
-					// TODO Have a rolling average to remove outliers?
-					if(skip++ == 0)
-						LOG_INF("Timer offset diff received: %d, new offset %d -> %d (+%d)", diff, tdma_timer_offset, new_offset, tdma_timer_offset_static);
-					tdma_timer_offset = new_offset;
-					continue;
 				default:
+					// Dongle will ignore all control packets by default
 					LOG_INF("Control packet %d received", rx_payload.data[1]);
 				}
 			}
@@ -243,11 +230,7 @@ void event_handler(struct esb_evt const *event)
 			{
 			case 21: // has sequence number & crc32
 			case 17: // has sequence number
-				// TODO Track packet loss
-				// Fall-throught
 			case 20: // has crc32
-				// We ignore it
-				// Fall-throught
 			case 16:
 				uint8_t tracker_id = rx_payload.data[1];
 				if (tracker_id >= stored_trackers) // not a stored tracker
@@ -321,14 +304,6 @@ int clocks_start(void)
 }
 
 // this was randomly generated
-// TODO: I have no idea?
-static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};
-static const uint8_t discovery_base_addr_1[4] = {0x28, 0xFF, 0x50, 0xB8}; // TODO: not used
-static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
-
-static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
-
-static bool esb_initialized = false;
 
 void esb_deinitialize() {
 	if(!esb_initialized)
@@ -358,7 +333,7 @@ int esb_initialize(bool tx)
 		config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = true;
+//		config.use_fast_ramp_up = false;
 		config.ack_handler = ack_handler;
 	}
 	else
@@ -374,7 +349,7 @@ int esb_initialize(bool tx)
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = true;
+//		config.use_fast_ramp_up = false;
 		config.ack_handler = ack_handler;
 	}
 
@@ -382,18 +357,13 @@ int esb_initialize(bool tx)
 	err = esb_init(&config);
 
 	if (!err)
+	{
 		esb_set_base_address_0(base_addr_0);
-
-	if (!err)
 		esb_set_base_address_1(base_addr_1);
-
-	if (!err)
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
-
-	if (!err)
-		esb_set_rf_channel(74);
-
-	if (err)
+		esb_set_rf_channel(50);
+	}
+	else
 	{
 		LOG_ERR("ESB initialization failed: %d", err);
 		set_status(SYS_STATUS_CONNECTION_ERROR, true);
