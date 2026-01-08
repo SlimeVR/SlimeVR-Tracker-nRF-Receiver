@@ -27,13 +27,10 @@
 #include "retained.h"
 
 #ifndef CONFIG_SOC_NRF52820
-#define MAX_TRACKERS 64
+#define MAX_TRACKERS 32
 #else
 #define MAX_TRACKERS 24
 #endif
-
-// How many packets to receive from one ID in a second before we consider it valid
-#define DETECTION_THRESHOLD 5
 
 #define WRONG_TRACKER_ID 255
 

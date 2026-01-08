@@ -30,7 +30,8 @@
 
 #include "esb.h"
 
-#define ESB_CHANNEL 53
+#define ESB_CHANNEL 83
+#define ESB_TX_POWER 8
 
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
@@ -165,15 +166,17 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			}
 			ack_payload->data[7] = packet_number;
 
-			statistics[tracker_id].packets_received++;
-			if(tracker_window != current_window)
-				statistics[tracker_id].windows_missed++;
-			else
-				statistics[tracker_id].windows_hit++;
+			struct con_stat* stat = &statistics[tracker_id];
 
-			uint8_t diff = packet_number - statistics[tracker_id].last_packet_number;
-			statistics[tracker_id].packets_lost += diff - 1;
-			statistics[tracker_id].last_packet_number = packet_number;
+			stat->packets_received++;
+			if(tracker_window != current_window)
+				stat->windows_missed++;
+			else
+				stat->windows_hit++;
+
+			uint8_t diff = packet_number - stat->last_packet_number;
+			stat->packets_lost += diff - 1;
+			stat->last_packet_number = packet_number;
 
 			// uint16_t packet_n = next_packet_statistics++;
 			// packets_statistics[packet_n].tracker_id = tracker_id;
@@ -329,7 +332,7 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = 30;
+		config.tx_output_power = ESB_TX_POWER;
 		config.retransmit_delay = 600;
 		config.retransmit_count = 0;
 		config.tx_mode = ESB_TXMODE_MANUAL;
@@ -345,7 +348,7 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = 30;
+		config.tx_output_power = ESB_TX_POWER;
 		config.retransmit_delay = 600;
 		// config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
