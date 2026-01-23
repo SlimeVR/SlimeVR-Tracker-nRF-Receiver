@@ -1,0 +1,67 @@
+// Copyright (c) 2024 Nordic Semiconductor ASA
+// SPDX-License-Identifier: Apache-2.0
+
+/dts-v1/;
+#include <nordic/nrf52820_qdaa.dtsi>
+
+/ {
+	model = "butterfly_p3";
+	compatible = "butterfly_p3";
+
+	aliases {
+		sw0 = &button0;
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push button switch 0";
+		};
+	};
+
+	chosen {
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,console = &cdc_acm_uart0;
+		zephyr,shell-uart = &cdc_acm_uart0;
+	};
+
+	nrf_radio_fem: skyFem { // ripped straight from holyiot dts, but it works
+        compatible = "skyworks,sky66112-11", "generic-fem-two-ctrl-pins";
+        ctx-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
+        ctx-settle-time-us = <1>;
+        crx-gpios = <&gpio0 16 GPIO_ACTIVE_HIGH>;
+        crx-settle-time-us = <1>;
+        tx-gain-db = <22>;
+		rx-gain-db = <12>;
+    };
+
+	zephyr,user {
+		led-gpios = <&gpio0 14 (GPIO_ACTIVE_LOW | GPIO_OPEN_DRAIN)>;
+	};
+};
+
+&reg0 {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&radio {
+	fem = <&nrf_radio_fem>;
+};
+
+zephyr_udc0: &usbd {
+	compatible = "nordic,nrf-usbd";
+	status = "okay";
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+};
