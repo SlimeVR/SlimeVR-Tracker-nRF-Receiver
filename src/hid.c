@@ -108,7 +108,6 @@ static void send_report(struct k_work *work)
 		// Copy existing data to buffer
 		for (epind = 0; epind < reports_to_send; epind++) {
 			ep_report_buffer[epind] = reports[read_idx];
-			epind++;
 			read_idx++;
 			if (read_idx == MAX_TRACKERS) read_idx = 0;
 			atomic_set(&report_read_index, read_idx);
