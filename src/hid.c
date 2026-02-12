@@ -27,6 +27,7 @@
 #include <zephyr/usb/class/usb_hid.h>
 
 static struct k_work report_send;
+static struct k_work report_read;
 
 static struct tracker_report {
 	uint8_t data[16];
@@ -43,17 +44,23 @@ atomic_t report_read_index = 0;
 static bool configured;
 static const struct device *hdev;
 static ATOMIC_DEFINE(hid_ep_in_busy, 1);
+static ATOMIC_DEFINE(hid_ep_out_busy, 1);
 
 #define HID_EP_BUSY_FLAG	0
-#define REPORT_PERIOD		K_MSEC(1) // streaming reports
+#define REPORT_PERIOD		K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
+#define POLL_PERIOD		K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
 #define HID_EP_REPORT_COUNT 4
 
 struct tracker_report ep_report_buffer[HID_EP_REPORT_COUNT];
+uint8_t ep_read_buffer[256]; // TODO: no struct // TODO: is possible to read >64 bytes, e.g. a delayed read?
 
 LOG_MODULE_REGISTER(hid_event, LOG_LEVEL_INF);
 
 static void report_event_handler(struct k_timer *dummy);
 static K_TIMER_DEFINE(event_timer, report_event_handler, NULL);
+
+static void report_read_handler(struct k_timer *dummy);
+static K_TIMER_DEFINE(read_timer, report_read_handler, NULL);
 
 static const uint8_t hid_report_desc[] = {
 	HID_USAGE_PAGE(HID_USAGE_GEN_DESKTOP),
@@ -63,6 +70,10 @@ static const uint8_t hid_report_desc[] = {
 		HID_REPORT_SIZE(8),
 		HID_REPORT_COUNT(64),
 		HID_INPUT(0x02),
+		HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
+		HID_REPORT_SIZE(8),
+		HID_REPORT_COUNT(64),
+		HID_OUTPUT(0x02),
 	HID_END_COLLECTION,
 };
 
@@ -151,12 +162,54 @@ static void hid_dropped_reports_logging(void)
 
 K_THREAD_DEFINE(hid_dropped_reports_logging_thread, 256, hid_dropped_reports_logging, NULL, NULL, NULL, 6, 0, 0);
 
+static void read_report(struct k_work *work)
+{
+	if (!usb_enabled) return;
+
+	int ret, read;
+
+	if (!atomic_test_and_set_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG)) {
+		ret = hid_int_ep_read(hdev, (uint8_t *)ep_read_buffer, sizeof(ep_read_buffer), &read);
+
+		if (ret != 0) {
+			LOG_ERR("hid_int_ep_read: %d", ret);
+		} else {
+			LOG_INF("hid_int_ep_read: %d", read);
+			// do something here
+/*
+			LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
+				(uint64_t *)ep_read_buffer + 56
+				(uint64_t *)ep_read_buffer + 48,
+				(uint64_t *)ep_read_buffer + 40,
+				(uint64_t *)ep_read_buffer + 32,
+				(uint64_t *)ep_read_buffer + 24,
+				(uint64_t *)ep_read_buffer + 16,
+				(uint64_t *)ep_read_buffer + 8,
+				(uint64_t *)ep_read_buffer,
+			);
+*/
+		}
+	} else { // busy with what
+		//LOG_DBG("HID OUT endpoint busy");
+	}
+}
+
 static void int_in_ready_cb(const struct device *dev)
 {
 	ARG_UNUSED(dev);
 	if (!atomic_test_and_clear_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG)) {
 		LOG_WRN("IN endpoint callback without preceding buffer write");
 	}
+	// TODO: can probably immediately write report from here
+}
+
+static void int_out_ready_cb(const struct device *dev)
+{
+	ARG_UNUSED(dev);
+	if (!atomic_test_and_clear_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG)) {
+		LOG_WRN("OUT endpoint callback without preceding buffer write");
+	}
+	// TODO: can probably immediately read report from here
 }
 
 /*
@@ -176,6 +229,12 @@ static void report_event_handler(struct k_timer *dummy)
 		k_work_submit(&report_send);
 }
 
+static void report_read_handler(struct k_timer *dummy)
+{
+	if (usb_enabled)
+		k_work_submit(&report_read);
+}
+
 static void protocol_cb(const struct device *dev, uint8_t protocol)
 {
 	LOG_INF("New protocol: %s", protocol == HID_PROTOCOL_BOOT ?
@@ -184,6 +243,7 @@ static void protocol_cb(const struct device *dev, uint8_t protocol)
 
 static const struct hid_ops ops = {
 	.int_in_ready = int_in_ready_cb,
+	.int_out_ready = int_out_ready_cb,
 	.on_idle = on_idle_cb,
 	.protocol_change = protocol_cb,
 };
@@ -230,6 +290,9 @@ static int composite_pre_init()
 	atomic_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG);
 	k_timer_start(&event_timer, REPORT_PERIOD, REPORT_PERIOD);
 
+	atomic_set_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG);
+	k_timer_start(&read_timer, POLL_PERIOD, POLL_PERIOD);
+
 	if (usb_hid_set_proto_code(hdev, HID_BOOT_IFACE_CODE_NONE)) {
 		LOG_WRN("Failed to set Protocol Code");
 	}
@@ -243,6 +306,7 @@ void usb_init_thread(void)
 {
 	usb_enable(status_cb);
 	k_work_init(&report_send, send_report);
+	k_work_init(&report_read, read_report);
 	usb_enabled = true;
 }
 
