@@ -176,18 +176,16 @@ static void read_report(struct k_work *work)
 		} else {
 			LOG_INF("hid_int_ep_read: %d", read);
 			// do something here
-/*
-			LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
-				(uint64_t *)ep_read_buffer + 56
+			LOG_INF("%016llX%016llX%016llX%016llX",
+				(uint64_t *)ep_read_buffer + 56,
 				(uint64_t *)ep_read_buffer + 48,
 				(uint64_t *)ep_read_buffer + 40,
 				(uint64_t *)ep_read_buffer + 32,
 				(uint64_t *)ep_read_buffer + 24,
 				(uint64_t *)ep_read_buffer + 16,
 				(uint64_t *)ep_read_buffer + 8,
-				(uint64_t *)ep_read_buffer,
+				(uint64_t *)ep_read_buffer
 			);
-*/
 		}
 	} else { // busy with what
 		//LOG_DBG("HID OUT endpoint busy");
