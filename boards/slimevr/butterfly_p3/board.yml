@@ -3,6 +3,7 @@
 
 board:
   name: butterfly_p3
+  full_name: Butterfly Receiver P3
   vendor: slimevr
   socs:
     - name: nrf52820

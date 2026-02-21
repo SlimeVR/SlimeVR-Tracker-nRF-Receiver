@@ -3,6 +3,7 @@
 
 board:
   name: etee_dongle_uf2
+  full_name: eteeDongle
   vendor: etee
   socs:
     - name: nrf52840
