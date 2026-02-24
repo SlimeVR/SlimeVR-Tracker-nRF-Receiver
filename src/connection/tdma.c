@@ -46,11 +46,11 @@ uint32_t tdma_get_slot(uint32_t timer) {
 }
 
 uint8_t tdma_get_window(uint32_t slot) {
-    return (slot - 24) % 10;
+    return (slot - TDMA_DONGLE_SLOTS) % TDMA_MAX_TRACKERS;
 }
 
 bool tdma_is_dongle_window(uint32_t slot) {
-    return slot < 24;
+    return slot < TDMA_DONGLE_SLOTS;
 }
 
 uint8_t tdma_get_tracker_window(uint8_t tracker_id) {
