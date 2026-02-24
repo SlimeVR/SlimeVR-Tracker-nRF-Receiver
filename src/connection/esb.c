@@ -30,7 +30,7 @@
 
 #include "esb.h"
 
-#define ESB_CHANNEL 83
+#define ESB_CHANNEL 50
 #define ESB_TX_POWER 8
 
 static struct esb_payload rx_payload;
@@ -51,18 +51,13 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
-int32_t tdma_timer_offset = 0;
-int32_t tdma_timer_offset_static = -3;
-uint8_t tracker_window = 0;
-uint32_t packet_sent_time = 0;
-uint8_t skip = 0;
-
 struct con_stat {
 	uint8_t packets_received;
 	uint8_t packets_lost;
 	uint8_t windows_hit;
 	uint8_t windows_missed;
 	uint8_t last_packet_number;
+	uint8_t repeat_packets;
 };
 
 // struct packet_stat {
@@ -83,6 +78,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 	// Handle new pairing requests
 	if(data_length == 8 && pipe_id == 0 && new_paired_address == 0) {
 		// TODO Implement proper pairing by packet header and such
+		// see proposal https://github.com/SlimeVR/SlimeVR-Tracker-nRF/issues/145
+		//
 		// make sure the packet is valid
 		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6);
 		if (checksum == 0)
@@ -108,7 +105,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		}
 		if (send_tracker_id == stored_trackers) // New device, add to NVS
 		{
-			// Save the address, we will save it in the esb thread
+			// Remember the address, we will save it in the esb thread
+			// to avoid syscalls in the handler
 			new_paired_address = found_addr;
 		}
 		ack_payload->data[0] = checksum; // Use checksum sent from device to make sure packet is for that device
@@ -168,15 +166,19 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 
 			struct con_stat* stat = &statistics[tracker_id];
 
-			stat->packets_received++;
-			if(tracker_window != current_window)
-				stat->windows_missed++;
-			else
-				stat->windows_hit++;
+			if(packet_number != stat->last_packet_number) {
+				stat->packets_received++;
+				if(tracker_window != current_window)
+					stat->windows_missed++;
+				else
+					stat->windows_hit++;
 
-			uint8_t diff = packet_number - stat->last_packet_number;
-			stat->packets_lost += diff - 1;
-			stat->last_packet_number = packet_number;
+				uint8_t diff = packet_number - stat->last_packet_number;
+				stat->packets_lost += diff - 1;
+				stat->last_packet_number = packet_number;
+			} else {
+				stat->repeat_packets++;
+			}
 
 			// uint16_t packet_n = next_packet_statistics++;
 			// packets_statistics[packet_n].tracker_id = tracker_id;
@@ -250,10 +252,13 @@ void event_handler(struct esb_evt const *event)
 					rx_payload.data[5] = statistics[tracker_id].packets_lost;
 					rx_payload.data[6] = statistics[tracker_id].windows_hit;
 					rx_payload.data[7] = statistics[tracker_id].windows_missed;
+					// Received from the tracker
+					rx_payload.data[12] = statistics[tracker_id].repeat_packets;
 					statistics[tracker_id].packets_lost = 0;
 					statistics[tracker_id].packets_received = 0;
 					statistics[tracker_id].windows_hit = 0;
 					statistics[tracker_id].windows_missed = 0;
+					statistics[tracker_id].repeat_packets = 0;
 				}
 				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
 				break;
@@ -333,7 +338,7 @@ int esb_initialize(bool tx)
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = ESB_TX_POWER;
-		config.retransmit_delay = 600;
+		config.retransmit_delay = 435;
 		config.retransmit_count = 0;
 		config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
@@ -349,7 +354,7 @@ int esb_initialize(bool tx)
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
 		config.tx_output_power = ESB_TX_POWER;
-		config.retransmit_delay = 600;
+		config.retransmit_delay = 435;
 		// config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
