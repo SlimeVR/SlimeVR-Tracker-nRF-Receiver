@@ -38,7 +38,7 @@ static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
 														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0);
-static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};\
+static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};
 static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
 
 static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
