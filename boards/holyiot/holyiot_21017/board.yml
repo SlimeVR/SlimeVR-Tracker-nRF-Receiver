@@ -3,7 +3,7 @@
 
 board:
   name: holyiot_21017
-  full_name: holyiot_21017
+  full_name: Holyiot-21017
   vendor: holyiot
   socs:
   - name: nrf52840

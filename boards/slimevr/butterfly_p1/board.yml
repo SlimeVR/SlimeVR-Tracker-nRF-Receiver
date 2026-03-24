@@ -3,6 +3,7 @@
 
 board:
   name: butterfly_p1_uf2
+  full_name: Butterfly Receiver P1
   vendor: slimevr
   socs:
     - name: nrf52833
