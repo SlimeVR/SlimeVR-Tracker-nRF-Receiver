@@ -2,11 +2,20 @@
 	chosen {
 		zephyr,console = &cdc_acm_uart0;
 		zephyr,shell-uart = &cdc_acm_uart0;
+		uart,host = &cdc_acm_uart1;
+		uart,passthrough = &uart0;
 	};
+};
+
+&uart0 {
+	current-speed = <1000000>;
 };
 
 zephyr_udc0: &usbd {
 	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+	};
+	cdc_acm_uart1: cdc_acm_uart1 {
 		compatible = "zephyr,cdc-acm-uart";
 	};
 };

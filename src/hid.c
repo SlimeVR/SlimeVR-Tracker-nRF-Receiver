@@ -25,6 +25,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
+#include <zephyr/sys/crc.h>
 
 static struct k_work report_send;
 static struct k_work report_read;
@@ -106,6 +107,20 @@ static void packet_device_addr(uint8_t *report, uint16_t id) // associate id and
 	report[1] = id;
 	memcpy(&report[2], &stored_tracker_addr[id], 6);
 	memset(&report[8], 0, 8); // last 8 bytes unused for now
+}
+
+static void packet_device_list_hash(uint8_t *report, uint16_t id) // associate id and tracker address
+{
+	// note: stored addresses use 6 bytes for the address, last two bytes are zeroes
+	uint32_t crc = crc32_k_4_2_update(0x93a409eb, stored_tracker_addr, (uint16_t)stored_trackers * 8);
+	report[0] = 0xAA; // magic :D
+	report[1] = 0xAA; // magic :D
+	report[2] = 0xAA; // magic :D
+	report[3] = 0xAA; // magic :D
+	*(uint16_t *)report[4] = LATENCY_US; // default to zero if not known
+	report[6] = 0; // unused
+	report[7] = stored_trackers;
+	memcpy(&report[8], &crc, 8);
 }
 
 static uint32_t dropped_reports = 0;
