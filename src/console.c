@@ -29,12 +29,15 @@
 #if DT_NODE_HAS_STATUS(USB, okay)
 
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/console/console.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/logging/log_ctrl.h>
 #include "connection/esb.h"
 
 #include <ctype.h>
+
+#define DEV_CONSOLE DEVICE_DT_GET(DT_CHOSEN(zephyr_console))
 
 #define DFU_DBL_RESET_MEM 0x20007F7C
 #define DFU_DBL_RESET_APP 0x4ee5677e
@@ -189,7 +192,13 @@ static void console_thread(void)
 {
 	console_getline_init();
 	while (log_data_pending())
-		k_usleep(1);
+		k_usleep(100);
+	uint32_t dtr = 0U;
+	while (!dtr) // TODO: change to make DTR start console thread?
+	{
+		k_usleep(100);
+		uart_line_ctrl_get(DEV_CONSOLE, UART_LINE_CTRL_DTR, &dtr);
+	}
 	k_msleep(100);
 	printk("*** " CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT " ***\n");
 	printk(FW_STRING);

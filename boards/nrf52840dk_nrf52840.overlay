@@ -1,14 +1,25 @@
 / {
+	uart-bridge0 {
+		compatible = "zephyr,uart-bridge";
+		peers = <&cdc_acm_uart1 &uart0>;
+	};
+
 	chosen {
 		zephyr,console = &cdc_acm_uart0;
 		zephyr,shell-uart = &cdc_acm_uart0;
 		uart,host = &cdc_acm_uart1;
 		uart,passthrough = &uart0;
+		uart,esp = &uart1;
 	};
 };
 
-&uart0 {
+&uart1 {
+	compatible = "nordic,nrf-uarte";
+	status = "okay";
 	current-speed = <1000000>;
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-1 = <&uart1_sleep>;
+	pinctrl-names = "default", "sleep";
 };
 
 zephyr_udc0: &usbd {

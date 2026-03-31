@@ -23,6 +23,7 @@
 #include "globals.h"
 #include "system/system.h"
 #include "hid.h"
+#include "uart.h"
 #include "tdma.h"
 
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
@@ -182,6 +183,7 @@ void event_handler(struct esb_evt const *event)
 				if (rx_payload.data[0] > 223) // reserved for receiver only
 					break;
 				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
+				uart_write_packet_n(rx_payload.data, rx_payload.rssi); // to uart
 				break;
 			default:
 				LOG_ERR("Wrong packet length: %d", rx_payload.length);
