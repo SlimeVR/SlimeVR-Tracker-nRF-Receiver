@@ -130,6 +130,40 @@ static uint8_t *uart_read_msg(uint8_t *msg, int16_t *len)
 	return msg + 1 + header_len;
 }
 
+//|type    |description
+//|TX  0x52|packet_device_list_hash (round trip ping)
+//|TX  0x53|associate id and tracker address
+//|TX  0x54|packet_recv_addr
+//|RX  0x51|round trip response
+//|RX  0x52|command
+
+//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|type    |data                                                                                                                                  |
+//|TX  0x52|stored  |crc                                |latency          |
+//|TX  0x53|id      |addr                                                 |
+//|TX  0x54|resv----|recv_addr                                            |
+//|RX  0x51|resv----------------------------------------------------------|
+//|RX  0x52|command |resv-------------------------------------------------|
+
+// TODO: implement this
+
+// passthrough to server
+
+//|type    |description
+//|TX   254|device list hash, round trip ping (TODO: duplicate list, but still need rtt)
+//|TX   253|receiver status (TODO: send number of pairing requests found?)
+//|TX   252|device pairing request, id is the id of the pairing request in case of multiple, not final tracker id (TODO: these can timeout if not sent often? can server automatically accept if the address was known?)
+//|RX   255|round trip response
+//|RX   254|command (TODO: include parameters?)
+
+//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|type    |data                                                                                                                                  |
+//|TX   254|stored  |crc                                |latency          |resv-------------------------------------------------------------------|
+//|TX   253|status  |resv-------------------------------------------------|resv-------------------------------------------------------------------|
+//|TX   252|id      |device_addr                                          |resv-------------------------------------------------------------------|
+//|RX   255|resv----------------------------------------------------------|resv-------------------------------------------------------------------|
+//|RX   254|command |resv-------------------------------------------------|resv-------------------------------------------------------------------|
+
 void uart_write_packet_n(uint8_t *data, uint8_t rssi)
 {
 	uint8_t buf[16];
