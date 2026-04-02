@@ -56,6 +56,37 @@ K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
 static void esb_parse_pair(void);
 
+//|type    |description
+//|RX  CRC8|pairing
+//|TX  CRC8|pairing
+
+//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|type    |data                                                                                                                                  |
+//|RX  CRC8|ack     |device_addr                                          |-
+//|TX  CRC8|ack     |recv_addr                                            |-
+
+// TDMA to implement
+
+//|packet  |description
+//|RX     1|request from tracker
+//|TX     2|pairing accepted from dongle
+//|TX     3|Dongle State
+//|TX     4|No Windows
+//|TX     5|Window Info
+
+//|packet  |b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|RX     1|    0xCD|    0x01|    0x00|Tracker Hardware ID                                  |Tracker Hardware ID                                  |-
+//|TX     2|    0xCD|    0x02|Trckr ID|Dongle Hardware ID                                   |Tracker Hardware ID                                  |-
+//|TX     3|    0xCD|    0x03|Dongle Hardware ID                                   |state   |channel |-
+//|TX     4|    0xCD|    0x04|-
+//|TX     5|    0xCD|    0x05|Window  |Timer                              |Packet  |-
+
+//packet 3:
+//state field bits: 9[0:0]: Accepts new trackers?; 9[1:1]: Force pair
+//channel bundle field bits: 10[0:3]: Channels bundle; 10[4:7]: Next channel offset
+//packet 5:
+//Packet: Packet Number
+
 void event_handler(struct esb_evt const *event)
 {
 	switch (event->evt_id)
