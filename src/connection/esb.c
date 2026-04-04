@@ -334,6 +334,7 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
+		config.tx_output_power = CONFIG_RADIO_TX_POWER;
 		config.retransmit_delay = 435;
 		config.retransmit_count = 0;
 		config.tx_mode = ESB_TXMODE_MANUAL;
@@ -349,6 +350,7 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
+		config.tx_output_power = CONFIG_RADIO_TX_POWER;
 		config.retransmit_delay = 435;
 		// config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
@@ -365,6 +367,7 @@ int esb_initialize(bool tx)
 		esb_set_base_address_0(base_addr_0);
 		esb_set_base_address_1(base_addr_1);
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
+		esb_set_rf_channel(CONFIG_ESB_CHANNEL);
 	}
 	else
 	{
@@ -469,17 +472,6 @@ void esb_clear(void)
 	stored_trackers = 0;
 	sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
 	LOG_INF("NVS Reset");
-}
-
-// TODO: WHAT IS THIS???? WHYO MADE IT AND WHY
-void esb_write_sync(uint16_t led_clock)
-{
-	if (!esb_initialized)
-		return;
-	tx_payload_sync.noack = false;
-	tx_payload_sync.data[0] = (led_clock >> 8) & 255;
-	tx_payload_sync.data[1] = led_clock & 255;
-	esb_write_payload(&tx_payload_sync);
 }
 
 bool is_dongle_window() {
