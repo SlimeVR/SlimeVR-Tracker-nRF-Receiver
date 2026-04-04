@@ -42,9 +42,10 @@ static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 
 uint8_t pairing_buf[8] = {0};
 static uint8_t discovered_trackers[MAX_TRACKERS] = {0};
-uint8_t sequences[255] = {0};
-uint16_t packets_count[255] = {0};
-uint8_t packets_lost[255] = {0};
+uint8_t sequences[256] = {0};
+int64_t last_seq_time[256] = {[0 ... 255] = -1000};
+uint16_t packets_count[256] = {0};
+uint8_t packets_lost[256] = {0};
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
@@ -146,14 +147,18 @@ void event_handler(struct esb_evt const *event)
 				// But brain hurty, will make a better one later
 				uint8_t seq = rx_payload.data[20];
 				uint8_t tracker_id = rx_payload.data[1];
-				int next = sequences[tracker_id] + 1;
-				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {\
-					if(next > seq && next < seq + 128) {
-						LOG_ERR("Sequence missmatch for tracker %d, expected %d got %d. Discarding.", tracker_id, next, seq);
+				uint8_t next = sequences[tracker_id] + 1; // wrap
+				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {
+					if (k_uptime_get() - last_seq_time[tracker_id] < 100 && ((next < 128) // reset sequence if last packet was over 100ms old
+						? ((seq < next) || (seq >= next + 128)) // next 0-127: seq is below next or above or equal to next +128
+						: ((seq < next) && (seq >= next - 128)))) // next 128-255: seq is below next and above or equal to next -128
+					{
+						LOG_WRN("Sequence missmatch for tracker %d, expected %d, got %d. Discarding.", tracker_id, next, seq);
 						break;
 					}
 				}
 				sequences[tracker_id] = seq;
+				last_seq_time[tracker_id] = k_uptime_get();
 				// Fall-throught
 			case 20: // has crc32
 				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
