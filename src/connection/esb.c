@@ -30,9 +30,6 @@
 
 #include "esb.h"
 
-#define ESB_CHANNEL 50
-#define ESB_TX_POWER 8
-
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
 														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -337,7 +334,6 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = ESB_TX_POWER;
 		config.retransmit_delay = 435;
 		config.retransmit_count = 0;
 		config.tx_mode = ESB_TXMODE_MANUAL;
@@ -353,7 +349,6 @@ int esb_initialize(bool tx)
 		config.event_handler = event_handler;
 		// config.bitrate = ESB_BITRATE_2MBPS;
 		// config.crc = ESB_CRC_16BIT;
-		config.tx_output_power = ESB_TX_POWER;
 		config.retransmit_delay = 435;
 		// config.retransmit_count = 3;
 		// config.tx_mode = ESB_TXMODE_AUTO;
@@ -370,7 +365,6 @@ int esb_initialize(bool tx)
 		esb_set_base_address_0(base_addr_0);
 		esb_set_base_address_1(base_addr_1);
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
-		esb_set_rf_channel(ESB_CHANNEL);
 	}
 	else
 	{
