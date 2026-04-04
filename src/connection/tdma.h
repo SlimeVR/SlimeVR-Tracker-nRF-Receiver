@@ -30,7 +30,7 @@
 #define TDMA_MAX_TRACKERS 32
 
 uint8_t tdma_tracker_slots = 8;
-uint8_t tdma_window_allocations = 256;
+uint8_t tdma_window_allocations = 256; // not used anywhere
 int8_t tdma_tracker_id_to_slot[MAX_TRACKERS] = {-1};
 uint8_t tdma_next_tracker_slot = 0;
 

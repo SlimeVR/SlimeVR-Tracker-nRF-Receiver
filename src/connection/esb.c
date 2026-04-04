@@ -42,9 +42,10 @@ static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 
 uint8_t pairing_buf[8] = {0};
 static uint8_t discovered_trackers[MAX_TRACKERS] = {0};
-uint8_t sequences[255] = {0};
-uint16_t packets_count[255] = {0};
-uint8_t packets_lost[255] = {0};
+uint8_t sequences[256] = {0};
+int64_t last_seq_time[256] = {[0 ... 255] = -1000};
+uint16_t packets_count[256] = {0};
+uint8_t packets_lost[256] = {0};
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 
@@ -55,6 +56,37 @@ static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, 6, 0, 0);
 
 static void esb_parse_pair(void);
+
+//|type    |description
+//|RX  CRC8|pairing
+//|TX  CRC8|pairing
+
+//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|type    |data                                                                                                                                  |
+//|RX  CRC8|ack     |device_addr                                          |-
+//|TX  CRC8|ack     |recv_addr                                            |-
+
+// TDMA to implement
+
+//|packet  |description
+//|RX     1|request from tracker
+//|TX     2|pairing accepted from dongle
+//|TX     3|Dongle State
+//|TX     4|No Windows
+//|TX     5|Window Info
+
+//|packet  |b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
+//|RX     1|    0xCD|    0x01|    0x00|Tracker Hardware ID                                  |Tracker Hardware ID                                  |-
+//|TX     2|    0xCD|    0x02|Trckr ID|Dongle Hardware ID                                   |Tracker Hardware ID                                  |-
+//|TX     3|    0xCD|    0x03|Dongle Hardware ID                                   |state   |channel |-
+//|TX     4|    0xCD|    0x04|-
+//|TX     5|    0xCD|    0x05|Window  |Timer                              |Packet  |-
+
+//packet 3:
+//state field bits: 9[0:0]: Accepts new trackers?; 9[1:1]: Force pair
+//channel bundle field bits: 10[0:3]: Channels bundle; 10[4:7]: Next channel offset
+//packet 5:
+//Packet: Packet Number
 
 void event_handler(struct esb_evt const *event)
 {
@@ -115,14 +147,18 @@ void event_handler(struct esb_evt const *event)
 				// But brain hurty, will make a better one later
 				uint8_t seq = rx_payload.data[20];
 				uint8_t tracker_id = rx_payload.data[1];
-				int next = sequences[tracker_id] + 1;
-				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {\
-					if(next > seq && next < seq + 128) {
-						LOG_ERR("Sequence missmatch for tracker %d, expected %d got %d. Discarding.", tracker_id, next, seq);
+				uint8_t next = sequences[tracker_id] + 1; // wrap
+				if(seq != 0 && sequences[tracker_id] != 0 && next != seq) {
+					if (k_uptime_get() - last_seq_time[tracker_id] < 100 && ((next < 128) // reset sequence if last packet was over 100ms old
+						? ((seq < next) || (seq >= next + 128)) // next 0-127: seq is below next or above or equal to next +128
+						: ((seq < next) && (seq >= next - 128)))) // next 128-255: seq is below next and above or equal to next -128
+					{
+						LOG_WRN("Sequence missmatch for tracker %d, expected %d, got %d. Discarding.", tracker_id, next, seq);
 						break;
 					}
 				}
 				sequences[tracker_id] = seq;
+				last_seq_time[tracker_id] = k_uptime_get();
 				// Fall-throught
 			case 20: // has crc32
 				uint32_t crc_check = crc32_k_4_2_update(0x93a409eb, rx_payload.data, 16);
