@@ -47,6 +47,5 @@ void esb_add_pair(uint64_t addr, bool checksum);
 void esb_pop_pair(void);
 
 void esb_clear(void);
-void esb_write_sync(uint16_t led_clock);
 
 #endif
