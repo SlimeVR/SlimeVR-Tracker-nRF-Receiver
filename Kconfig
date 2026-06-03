@@ -52,4 +52,18 @@ config LED_DEFAULT_COLOR_B
 
 endmenu
 
+config RADIO_TX_POWER
+    int "Radio output power (dBm)"
+    default 8
+    help
+        Radio output power level.
+        A lower value may reduce power consumption.
+
+config ESB_CHANNEL
+    int "Initial ESB channel"
+    range 0 100
+    default 50
+    help
+        ESB channel frequency used on initialization.
+
 source "Kconfig.zephyr"

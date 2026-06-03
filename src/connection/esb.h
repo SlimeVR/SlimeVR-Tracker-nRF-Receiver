@@ -25,21 +25,27 @@
 
 #include <esb.h>
 
+#define ESB_CONTROL_PREAMBLE 0xCD
+#define ESB_TEST_PREAMBLE 0xCF // Reserved
+
+#define ESB_PACKET_CONTROL_PAIR_REQEST 1
+#define ESB_PACKET_CONTROL_PAIR_ACCEPT 2
+#define ESB_PACKET_CONTROL_DONGLE_STATUS 3
+#define ESB_PACKET_CONTROL_NO_WINDOWS 4
+#define ESB_PACKET_CONTROL_WINDOW_INFO 5
+
 void event_handler(struct esb_evt const *event);
+void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
 int clocks_start(void);
 int esb_initialize(bool);
 
-void esb_set_addr_discovery(void);
-void esb_set_addr_paired(void);
+void esb_set_addr(void);
+
+int esb_get_frequency(void);
 
 void esb_add_pair(uint64_t addr, bool checksum);
 void esb_pop_pair(void);
 
-void esb_pair(void);
-void esb_reset_pair(void);
-void esb_finish_pair(void);
 void esb_clear(void);
-void esb_write_sync(uint16_t led_clock);
-void esb_receive(void);
 
 #endif

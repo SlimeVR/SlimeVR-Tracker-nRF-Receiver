@@ -20,8 +20,7 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#ifndef SLIMENRF_GLOBALS
-#define SLIMENRF_GLOBALS
+#pragma once
 
 #include <zephyr/logging/log.h>
 
@@ -29,16 +28,13 @@
 #include "thread_priority.h"
 
 #ifndef CONFIG_SOC_NRF52820
-#define MAX_TRACKERS 256
+#define MAX_TRACKERS 32
 #else
 #define MAX_TRACKERS 24
 #endif
 
-// How many packets to receive from one ID in a second before we consider it valid
-#define DETECTION_THRESHOLD 5
+#define WRONG_TRACKER_ID 255
 
 // TODO: move to esb
 extern uint8_t stored_trackers;
 extern uint64_t stored_tracker_addr[MAX_TRACKERS];
-
-#endif

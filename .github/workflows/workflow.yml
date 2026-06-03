@@ -14,7 +14,7 @@ concurrency:
 permissions: write-all
 
 env:
-  ZEPHYR_SDK_VERSION: "0.16.9"
+  ZEPHYR_SDK_VERSION: "0.17.4"
 
 jobs:
   setup:
