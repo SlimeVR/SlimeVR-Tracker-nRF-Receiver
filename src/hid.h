@@ -25,6 +25,10 @@
 
 #include <stdint.h>
 
+void hid_init(void);
+
+void hid_int_in_ready(void);
+
 void hid_write_packet_n(uint8_t *data, uint8_t rssi);
 
 #endif

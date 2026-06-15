@@ -41,7 +41,6 @@ atomic_t report_read_index = 0;
 // read_index == write_index -> empty fifo
 // (write_index + 1) % MAX_TRACKERS == read_index -> full fifo
 
-static bool configured;
 static const struct device *hdev;
 static ATOMIC_DEFINE(hid_ep_in_busy, 1);
 static ATOMIC_DEFINE(hid_ep_out_busy, 1);
@@ -220,6 +219,11 @@ static void int_in_ready_cb(const struct device *dev)
 	// TODO: can probably immediately write report from here
 }
 
+void hid_int_in_ready(void)
+{
+	int_in_ready_cb(hdev);
+}
+
 static void int_out_ready_cb(const struct device *dev)
 {
 	ARG_UNUSED(dev);
@@ -265,32 +269,6 @@ static const struct hid_ops ops = {
 	.protocol_change = protocol_cb,
 };
 
-static void status_cb(enum usb_dc_status_code status, const uint8_t *param)
-{
-	switch (status) {
-	case USB_DC_RESET:
-		configured = false;
-		break;
-	case USB_DC_CONFIGURED:
-		int configurationIndex = *param;
-		if(configurationIndex == 0) {
-			// from usb_device.c: A configuration index of 0 unconfigures the device.
-			configured = false;
-		} else {
-			if (!configured) {
-				int_in_ready_cb(hdev);
-				configured = true;
-			}
-		}
-		break;
-	case USB_DC_SOF:
-		break;
-	default:
-		LOG_DBG("status %u unhandled", status);
-		break;
-	}
-}
-
 static int composite_pre_init()
 {
 	hdev = device_get_binding("HID_0");
@@ -319,15 +297,12 @@ static int composite_pre_init()
 
 SYS_INIT(composite_pre_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
-void usb_init_thread(void)
+void hid_init(void)
 {
-	usb_enable(status_cb);
 	k_work_init(&report_send, send_report);
 	k_work_init(&report_read, read_report);
 	usb_enabled = true;
 }
-
-K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0, 0);
 
 //|type    |description
 //|RX     0|device info ("info")
