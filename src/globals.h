@@ -26,6 +26,7 @@
 #include <zephyr/logging/log.h>
 
 #include "retained.h"
+#include "thread_priority.h"
 
 #ifndef CONFIG_SOC_NRF52820
 #define MAX_TRACKERS 256
