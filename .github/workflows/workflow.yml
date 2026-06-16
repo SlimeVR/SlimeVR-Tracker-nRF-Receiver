@@ -198,6 +198,9 @@ jobs:
                   {boardname: "butterfly_p1_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P1_Receiver"}, 
                   {boardname: "butterfly_p2_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P2_Receiver"}, 
                   {boardname: "butterfly_p3/nrf52820", fileformat: "hex", filename: "SlimeNRF_Butterfly_P3_Receiver"},
+                  {boardname: "foxdongle_uf2/nrf52840", fileformat: "uf2", filename: "FoxApplication_FoxDongle"},
+                  {boardname: "foxdongle33_uf2/nrf52833", fileformat: "uf2", filename: "FoxApplication_FoxDongle33"},
+                  {boardname: "foxpromicro_rfek_uf2/nrf52840", fileformat: "uf2", filename: "FoxApplication_FoxProMicro_RFEK"},
                 ]
     runs-on: ubuntu-latest
     steps:
