@@ -27,12 +27,16 @@
 
 #define ESB_CONTROL_PREAMBLE 0xCD
 #define ESB_TEST_PREAMBLE 0xCF // Reserved
+#define ESB_COMMAND_PREAMBLE 0xCE
 
 #define ESB_PACKET_CONTROL_PAIR_REQEST 1
 #define ESB_PACKET_CONTROL_PAIR_ACCEPT 2
 #define ESB_PACKET_CONTROL_DONGLE_STATUS 3
 #define ESB_PACKET_CONTROL_NO_WINDOWS 4
 #define ESB_PACKET_CONTROL_WINDOW_INFO 5
+
+#define ESB_PACKET_COMMAND_SHUTDOWN 1
+#define ESB_PACKET_COMMAND_UNPAIR 2
 
 void event_handler(struct esb_evt const *event);
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
@@ -47,5 +51,7 @@ void esb_add_pair(uint64_t addr, bool checksum);
 void esb_pop_pair(void);
 
 void esb_clear(void);
+
+void esb_send_command(uint8_t command);
 
 #endif

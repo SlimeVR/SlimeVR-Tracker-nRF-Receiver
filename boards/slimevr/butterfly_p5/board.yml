@@ -6,4 +6,3 @@ board:
   vendor: slimevr
   socs:
     - name: nrf52833
-

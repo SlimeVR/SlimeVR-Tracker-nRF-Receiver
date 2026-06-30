@@ -35,6 +35,7 @@ static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
 														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
 														  0, 0, 0, 0);
+static struct esb_payload tx_payload_command = ESB_CREATE_PAYLOAD(0, 0);
 static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};
 static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
 
@@ -492,6 +493,24 @@ void prepare_dongle_sate_packet() {
 	uint8_t channels_set = 0; // Channels bundle - 4 bits - which channels bundle this dongle hops on
 	uint8_t channel_offset = 0 << 4; // Next channel offset - 4 bits - which channel bundle this dongle will move next after this broadcast
 	tx_payload_dongle_sate.data[10] = channels_set | channel_offset; // Channels
+}
+
+void esb_send_command(uint8_t command)
+{
+	LOG_INF("Sending command packet");
+	tx_payload_command.data[0] = ESB_COMMAND_PREAMBLE;
+	tx_payload_command.data[1] = command;
+	tx_payload_command.noack = true;
+	esb_write_payload(&tx_payload_command);
+	esb_start_tx();
+
+	while (!esb_is_idle()) {
+		k_msleep(1);
+	}
+
+	esb_deinitialize();
+    esb_initialize(false);
+    esb_start_rx();
 }
 
 static void esb_thread(void)
