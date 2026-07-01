@@ -115,81 +115,67 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		*has_ack_payload = true;
 	}
 	if(pipe_id > 0) {
+		uint8_t packet_number = pdu_data[0]; // Sequence number
+		ack_payload->data[0] = packet_number;
 		// Check tracker's timing window and send its offset for TDMA
 		uint32_t tdma_timer = tdma_get_timer();
 		uint8_t tracker_window = 0;
-		uint8_t tracker_id = WRONG_TRACKER_ID;
-		if(pipe_id > 0) {
-			// Tracker ID is always at byte 1
-			tracker_id = pdu_data[1];
-			if(tracker_id == WRONG_TRACKER_ID) {
-				// Not tracker packet, skip
-				return;
-			}
-			tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
-			if(tracker_window == TDMA_WRONG_WINDOW) {
-				// No windows left for this tracker, reject it
-				ack_payload->data[0] = ESB_CONTROL_PREAMBLE;
-				ack_payload->data[1] = ESB_PACKET_CONTROL_NO_WINDOWS; // No Windows (4)
-				ack_payload->length = 2;
-				*has_ack_payload = true;
-				return;
-			}
+		uint8_t tracker_id = pdu_data[2]; // Tracker ID is always at byte 2
+		if(tracker_id == WRONG_TRACKER_ID) {
+			// Not tracker packet, skip
+			return;
+		}
+		tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
+		if(tracker_window == TDMA_WRONG_WINDOW) {
+			// No windows left for this tracker, reject it
+			ack_payload->data[1] = ESB_PACKET_CONTROL_NO_WINDOWS; // No Windows (234)
+			ack_payload->length = 2;
+			*has_ack_payload = true;
+			return;
 		}
 		uint32_t current_slot = tdma_get_slot(tdma_timer);
 		uint8_t current_window = tdma_get_window(current_slot);
 		if(!tdma_is_dongle_window(current_slot) && current_window == tracker_window) {
 			// Tracker sent data at the correct time, we can send data to it if we have
 			// TODO : Send data if we have for this tracker
+		} // else {
+			// Send Window Info (5) if we don't have anything better
+			// TODO : We should send one at least once every 20-100 packets to prevent timer drift
+			ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (235)
+			ack_payload->data[2] = tracker_window;
+			memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
+			ack_payload->length = 7;
+			*has_ack_payload = true;
+		// }
+
+		struct con_stat* stat = &statistics[tracker_id];
+
+		if(packet_number != stat->last_packet_number) {
+			stat->packets_received++;
+			if(tracker_window != current_window)
+				stat->windows_missed++;
+			else
+				stat->windows_hit++;
+
+			uint8_t diff = packet_number - stat->last_packet_number;
+			stat->packets_lost += diff - 1;
+			stat->last_packet_number = packet_number;
+		} else {
+			stat->repeat_packets++;
 		}
 
-		ack_payload->data[0] = ESB_CONTROL_PREAMBLE;
-		ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (5)
-		ack_payload->data[2] = tracker_window;
-		memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
-		ack_payload->data[7] = 0; // Packet ID we're replying to
-
-		ack_payload->length = 8;
-		*has_ack_payload = true;
-
-		if(pipe_id > 0) {
-			uint8_t packet_number = 0;
-			if(data_length == 17) {
-				packet_number = pdu_data[16];
-			} else if(data_length == 21) {
-				packet_number = pdu_data[20];
-			}
-			ack_payload->data[7] = packet_number;
-
-			struct con_stat* stat = &statistics[tracker_id];
-
-			if(packet_number != stat->last_packet_number) {
-				stat->packets_received++;
-				if(tracker_window != current_window)
-					stat->windows_missed++;
-				else
-					stat->windows_hit++;
-
-				uint8_t diff = packet_number - stat->last_packet_number;
-				stat->packets_lost += diff - 1;
-				stat->last_packet_number = packet_number;
-			} else {
-				stat->repeat_packets++;
-			}
-
-			// uint16_t packet_n = next_packet_statistics++;
-			// packets_statistics[packet_n].tracker_id = tracker_id;
-			// packets_statistics[packet_n].corect_window = tracker_window;
-			// packets_statistics[packet_n].rcv_window = current_window;
-			// packets_statistics[packet_n].timer = tdma_timer;
-			// LOG_INF("P %d T %d @ %d t (%d / %d w, %d s) (%d off) N %d", pdu_data[0], tracker_id, tdma_timer, current_window, tracker_window, current_slot, tdma_timer - tdma_get_slot_time(current_slot), packet_number);
-			// if(current_slot < 24) {
-			// 	LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
-			// } else {
-			// 	if(tracker_window != current_window)
-			// 		LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
-			// }
-		}
+		// uint16_t packet_n = next_packet_statistics++;
+		// packets_statistics[packet_n].tracker_id = tracker_id;
+		// packets_statistics[packet_n].corect_window = tracker_window;
+		// packets_statistics[packet_n].rcv_window = current_window;
+		// packets_statistics[packet_n].timer = tdma_timer;
+		// LOG_INF("P %d T %d @ %d t (%d / %d w, %d s) (%d off) N %d", pdu_data[0], tracker_id, tdma_timer, current_window, tracker_window, current_slot, tdma_timer - tdma_get_slot_time(current_slot), packet_number);
+		// if(current_slot < 24) {
+		// 	LOG_INF("Tracker broadcased in dongle's slot (%d)", current_slot);
+		// } else {
+		// 	if(tracker_window != current_window)
+		// 		LOG_INF("Tracker missed it's window %d != %d, slot %d", tracker_window, current_window, current_slot);
+		// }
 	}
 }
 
@@ -217,49 +203,50 @@ void event_handler(struct esb_evt const *event)
 				LOG_ERR("Error while reading rx packet: %d", err);
 				return;
 			}
+			if(rx_payload.length < 3) {
+				LOG_ERR("Too short packet received");
+				return;
+			}
+			
+			if(rx_payload.data[1] > ESB_PACKET_DONGLE_PACKETS) {
+				// Packet for dongle received
 
-			if(rx_payload.data[0] == ESB_CONTROL_PREAMBLE) {
-				// Control packet received
-				switch(rx_payload.data[1]) {
-				default:
-					// Dongle will ignore all control packets by default
-					LOG_INF("Control packet %d received", rx_payload.data[1]);
+				if(rx_payload.data[1] > ESB_PACKET_CONTROL_PACKETS) {
+					// Control packet received
+					switch(rx_payload.data[1]) {
+					default:
+						// Dongle will ignore all control packets by default
+						LOG_INF("Control packet %d received", rx_payload.data[1]);
+					}
 				}
 			}
 
 			if(rx_payload.pipe == 0)
 				continue; // Handled in ACK handler
 				
-			switch (rx_payload.length)
-			{
-			case 21: // has sequence number & crc32
-			case 17: // has sequence number
-			case 20: // has crc32
-			case 16:
-				uint8_t tracker_id = rx_payload.data[1];
+			if (rx_payload.length >= 17) {
+				uint8_t tracker_id = rx_payload.data[2];
 				if (tracker_id >= stored_trackers) // not a stored tracker
 					continue;
-				if (rx_payload.data[0] > ESB_CONTROL_PREAMBLE) // reserved for receiver only
-					break;
 				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
 					break;
-				if(rx_payload.data[0] == 3) { // status
+				if(rx_payload.data[1] == 3) { // status
 					// Fill in packet lost statistics in status packet
-					rx_payload.data[4] = statistics[tracker_id].packets_received;
-					rx_payload.data[5] = statistics[tracker_id].packets_lost;
-					rx_payload.data[6] = statistics[tracker_id].windows_hit;
-					rx_payload.data[7] = statistics[tracker_id].windows_missed;
+					rx_payload.data[5] = statistics[tracker_id].packets_received;
+					rx_payload.data[6] = statistics[tracker_id].packets_lost;
+					rx_payload.data[7] = statistics[tracker_id].windows_hit;
+					rx_payload.data[8] = statistics[tracker_id].windows_missed;
 					// Received from the tracker
-					rx_payload.data[12] = statistics[tracker_id].repeat_packets;
+					rx_payload.data[13] = statistics[tracker_id].repeat_packets;
 					statistics[tracker_id].packets_lost = 0;
 					statistics[tracker_id].packets_received = 0;
 					statistics[tracker_id].windows_hit = 0;
 					statistics[tracker_id].windows_missed = 0;
 					statistics[tracker_id].repeat_packets = 0;
 				}
-				hid_write_packet_n(rx_payload.data, rx_payload.rssi); // write to hid endpoint
+				hid_write_packet_n(rx_payload.data + 1, rx_payload.rssi, 16); // write to hid endpoint
 				break;
-			default:
+			} else {
 				LOG_ERR("Wrong packet length: %d", rx_payload.length);
 				break;
 			}
