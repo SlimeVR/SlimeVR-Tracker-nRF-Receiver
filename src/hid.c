@@ -327,7 +327,7 @@ void hid_init(void)
 
 // runtime is in microseconds (overkill), sleeptime is in milliseconds (overkill but less)
 
-void hid_write_packet_n(uint8_t *data, uint8_t rssi)
+void hid_write_packet_n(uint8_t *data, uint8_t rssi, size_t size)
 {
 	memcpy(&report.data, data, sizeof(report)); // all data can be passed through
 	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
