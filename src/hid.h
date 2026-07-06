@@ -25,6 +25,11 @@
 
 #include <stdint.h>
 
+typedef struct {
+	uint64_t tracker_id;
+	uint8_t command;
+} hidToEsb;
+
 void hid_init(void);
 
 void hid_int_in_ready(void);

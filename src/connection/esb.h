@@ -32,7 +32,6 @@
 #define ESB_PACKET_DATA_LEGACY_SIZE 16
 #define ESB_CONTROL_PREAMBLE 0xCD
 #define ESB_TEST_PREAMBLE 0xCF // Reserved
-#define ESB_COMMAND_PREAMBLE 0xCE
 
 #define ESB_PACKET_BROADCAST 255
 #define ESB_PACKET_DONGLE_PACKETS 200
@@ -61,6 +60,5 @@ void esb_pop_pair(void);
 
 void esb_clear(void);
 
-void esb_send_command(uint8_t command);
 
 #endif

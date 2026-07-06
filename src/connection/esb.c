@@ -41,6 +41,8 @@ static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0
 
 static uint8_t base_addr_0[4], base_addr_1[4], addr_prefix[8] = {0};
 
+static uint8_t current_window_state;
+
 static bool esb_initialized = false;
 uint64_t new_paired_address = 0;
 
@@ -68,6 +70,12 @@ struct con_stat {
 struct con_stat statistics[MAX_TRACKERS];
 // struct packet_stat packets_statistics[2048];
 // uint16_t next_packet_statistics = 0;
+
+extern struct k_msgq hid_to_esb_queue;
+
+hidToEsb command;
+
+static bool command_pending = false;
 
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
@@ -126,6 +134,18 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			// Not tracker packet, skip
 			return;
 		}
+
+		if (command_pending && command.tracker_id == tracker_id) {
+			uint8_t packet_number = pdu_data[0];
+            ack_payload->data[0] = packet_number;
+			ack_payload->data[1] = command.command;
+            ack_payload->length = 2;
+            *has_ack_payload = true;
+            command_pending = false;
+            LOG_INF("Command 0x%02X attached to ACK for tracker %d", command.command, tracker_id);
+            return;
+        }
+
 		tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
 		if(tracker_window == TDMA_WRONG_WINDOW) {
 			// No windows left for this tracker, reject it
@@ -136,6 +156,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		}
 		uint32_t current_slot = tdma_get_slot(tdma_timer);
 		uint8_t current_window = tdma_get_window(current_slot);
+		current_window_state = current_window;
 		if(!tdma_is_dongle_window(current_slot) && current_window == tracker_window) {
 			// Tracker sent data at the correct time, we can send data to it if we have
 			// TODO : Send data if we have for this tracker
@@ -482,22 +503,19 @@ void prepare_dongle_sate_packet() {
 	tx_payload_dongle_sate.data[10] = channels_set | channel_offset; // Channels
 }
 
-void esb_send_command(uint8_t command)
-{
-	LOG_INF("Sending command packet");
-	tx_payload_command.data[0] = ESB_COMMAND_PREAMBLE;
-	tx_payload_command.data[1] = command;
+void prepare_command_packet() {
 	tx_payload_command.noack = true;
-	esb_write_payload(&tx_payload_command);
-	esb_start_tx();
+	tx_payload_command.data[0] = ESB_COMMAND_PREAMBLE;
+	tx_payload_command.data[1] = command.command;
+}
 
-	while (!esb_is_idle()) {
-		k_msleep(1);
+void read_message_queue() {
+	uint8_t err = k_msgq_get(&hid_to_esb_queue, &command, K_NO_WAIT);
+	if (err) {
+		LOG_DBG("No message received %d", err);
+		return;
 	}
-
-	esb_deinitialize();
-    esb_initialize(false);
-    esb_start_rx();
+	command_pending = true;
 }
 
 static void esb_thread(void)
@@ -523,6 +541,7 @@ static void esb_thread(void)
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 			new_paired_address = 0;
 		}
+		read_message_queue();
 		if(is_dongle_window()) {
 			if(!was_dongle_window) {
 				was_dongle_window = true;
@@ -547,6 +566,11 @@ static void esb_thread(void)
 
 				prepare_dongle_sate_packet();
 				esb_write_payload(&tx_payload_dongle_sate);
+				if (command_pending) {
+					LOG_INF("Command pending");
+					prepare_command_packet();
+					esb_write_payload(&tx_payload_command);
+				}
 				esb_start_tx();
 
 				while(!esb_is_idle())

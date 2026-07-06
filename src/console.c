@@ -209,7 +209,6 @@ static void console_thread(void)
 	const char command_pair[] = "pair";
 	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
-	const char command_shutdown_tracker[] = "shutdown_tracker";
 #if DFU_EXISTS
 	const char command_dfu[] = "dfu";
 #endif
@@ -271,11 +270,6 @@ static void console_thread(void)
 		else if (strcmp(line, command_clear) == 0)
 		{
 			esb_clear();
-		}
-		else if (strcmp(line, command_shutdown_tracker) == 0)
-		{
-			printk("Shutting down trackers");
-			esb_send_command(ESB_PACKET_COMMAND_SHUTDOWN);
 		}
 #if DFU_EXISTS
 		else if (strcmp(line, command_dfu) == 0)

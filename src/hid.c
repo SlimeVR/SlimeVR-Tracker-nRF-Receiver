@@ -53,6 +53,14 @@ static ATOMIC_DEFINE(hid_ep_out_busy, 1);
 struct tracker_report ep_report_buffer[HID_EP_REPORT_COUNT];
 uint8_t ep_read_buffer[256]; // TODO: no struct // TODO: is possible to read >64 bytes, e.g. a delayed read?
 
+typedef struct {
+	uint64_t tracker_id;
+	uint8_t command;
+} hidToEsb;
+
+
+K_MSGQ_DEFINE(hid_to_esb_queue, sizeof(hidToEsb), 10, 4);
+
 LOG_MODULE_REGISTER(hid_event, LOG_LEVEL_INF);
 
 static void report_event_handler(struct k_timer *dummy);
@@ -194,6 +202,12 @@ static void read_report(struct k_work *work)
 		} else {
 			LOG_INF("hid_int_ep_read: %d", read);
 			// do something here
+			/*
+			|Header |		|	
+			 1-200	 Tracker
+			 201-254 Dongle
+
+			*/
 			LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
 				*(uint64_t *)(ep_read_buffer + 56),
 				*(uint64_t *)(ep_read_buffer + 48),
@@ -204,6 +218,36 @@ static void read_report(struct k_work *work)
 				*(uint64_t *)(ep_read_buffer + 8),
 				*(uint64_t *)ep_read_buffer
 			);
+			
+			for (int offset = 0; offset < read; offset += 16) {
+            uint8_t *packet = ep_read_buffer + offset;
+            uint8_t packet_header = packet[0];
+			
+			if (packet_header == 0)
+				continue;
+
+			// Message is for tracker
+            if ((packet_header >= 1) & (packet_header <= 200)) {
+
+                uint8_t target_tracker_id = packet[0] - 1;
+
+                LOG_DBG("Received data for Tracker ID %d", 
+                        target_tracker_id);
+				
+				uint8_t tracker_command = packet[1];
+				hidToEsb command = {
+					.tracker_id = target_tracker_id,
+					.command = tracker_command,
+				};
+
+					LOG_DBG("Hid Report: Header=0x%02X, Tracker ID=%012llX, Command=%u", 
+						packet_header,
+						command.tracker_id, 
+						command.command);
+
+                k_msgq_put(&hid_to_esb_queue, &command, K_FOREVER);
+				}
+			}
 		}
 	} else { // busy with what
 		//LOG_DBG("HID OUT endpoint busy");
