@@ -21,6 +21,7 @@
 	THE SOFTWARE.
 */
 #include "globals.h"
+#include "connection/message.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usb_device.h>
@@ -29,11 +30,11 @@
 static struct k_work report_send;
 static struct k_work report_read;
 
-static struct tracker_report {
+static struct tracker_report
+{
 	uint8_t data[16];
 } __packed report = {
-	.data = {0}
-};;
+	.data = {0}};
 
 struct tracker_report reports[MAX_TRACKERS];
 atomic_t report_write_index = 0;
@@ -45,21 +46,21 @@ static const struct device *hdev;
 static ATOMIC_DEFINE(hid_ep_in_busy, 1);
 static ATOMIC_DEFINE(hid_ep_out_busy, 1);
 
-#define HID_EP_BUSY_FLAG	0
-#define REPORT_PERIOD		K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
-#define POLL_PERIOD		K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
+#define HID_EP_BUSY_FLAG 0
+#define REPORT_PERIOD K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
+#define POLL_PERIOD K_MSEC(1)	// streaming reports // TODO: could it be shorter/reduce latency?
 #define HID_EP_REPORT_COUNT 4
+
+#define HID_PACKET_BUF_SIZE 256
 
 struct tracker_report ep_report_buffer[HID_EP_REPORT_COUNT];
 uint8_t ep_read_buffer[256]; // TODO: no struct // TODO: is possible to read >64 bytes, e.g. a delayed read?
 
-typedef struct {
-	uint64_t tracker_id;
-	uint8_t command;
-} hidToEsb;
+hid_to_esb command;
+// struct k_msgq tracker_queues[MAX_TRACKERS];
+struct k_msgq hid_read_message;
 
-
-K_MSGQ_DEFINE(hid_to_esb_queue, sizeof(hidToEsb), 10, 4);
+K_MSGQ_DEFINE(hid_read_message, HID_PACKET_BUF_SIZE, 10, 1);
 
 LOG_MODULE_REGISTER(hid_event, LOG_LEVEL_INF);
 
@@ -73,14 +74,14 @@ static const uint8_t hid_report_desc[] = {
 	HID_USAGE_PAGE(HID_USAGE_GEN_DESKTOP),
 	HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
 	HID_COLLECTION(HID_COLLECTION_APPLICATION),
-		HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
-		HID_REPORT_SIZE(8),
-		HID_REPORT_COUNT(64),
-		HID_INPUT(0x02),
-		HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
-		HID_REPORT_SIZE(8),
-		HID_REPORT_COUNT(64),
-		HID_OUTPUT(0x02),
+	HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
+	HID_REPORT_SIZE(8),
+	HID_REPORT_COUNT(64),
+	HID_INPUT(0x02),
+	HID_USAGE(HID_USAGE_GEN_DESKTOP_UNDEFINED),
+	HID_REPORT_SIZE(8),
+	HID_REPORT_COUNT(64),
+	HID_OUTPUT(0x02),
 	HID_END_COLLECTION,
 };
 
@@ -120,14 +121,16 @@ static uint16_t max_dropped_reports = 0;
 
 static void send_report(struct k_work *work)
 {
-	if (!usb_enabled) return;
-	if (!stored_trackers) return;
-
+	if (!usb_enabled)
+		return;
+	if (!stored_trackers)
+		return;
 	// Get current FIFO status atomically
 	size_t write_idx = (size_t)atomic_get(&report_write_index);
 	size_t read_idx = (size_t)atomic_get(&report_read_index);
 
-	if (write_idx == read_idx && k_uptime_get() - 100 < last_registration_sent) {
+	if (write_idx == read_idx && k_uptime_get() - 100 < last_registration_sent)
+	{
 		return; // send registrations only every 100ms
 	}
 
@@ -135,24 +138,30 @@ static void send_report(struct k_work *work)
 
 	last_registration_sent = k_uptime_get();
 
-	if (!atomic_test_and_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG)) {
+	if (!atomic_test_and_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG))
+	{
 		// Calculate how many reports we have available
 		int available_reports = write_idx - read_idx;
-		if (available_reports < 0) available_reports += MAX_TRACKERS;
-		size_t reports_to_send = (size_t) MIN(available_reports, HID_EP_REPORT_COUNT);
+		if (available_reports < 0)
+			available_reports += MAX_TRACKERS;
+		size_t reports_to_send = (size_t)MIN(available_reports, HID_EP_REPORT_COUNT);
 
 		int epind;
 		// Copy existing data to buffer
-		for (epind = 0; epind < reports_to_send; epind++) {
+		for (epind = 0; epind < reports_to_send; epind++)
+		{
 			ep_report_buffer[epind] = reports[read_idx];
 			read_idx++;
-			if (read_idx == MAX_TRACKERS) read_idx = 0;
+			if (read_idx == MAX_TRACKERS)
+				read_idx = 0;
 			atomic_set(&report_read_index, read_idx);
 		}
 
 		// Pad remaining report slots with device addr
-		for (; epind < HID_EP_REPORT_COUNT; epind++) {
-			if (stored_trackers > 0) {
+		for (; epind < HID_EP_REPORT_COUNT; epind++)
+		{
+			if (stored_trackers > 0)
+			{
 				packet_device_addr(ep_report_buffer[epind].data, sent_device_addr);
 				sent_device_addr = (sent_device_addr + 1) % stored_trackers;
 			}
@@ -160,17 +169,22 @@ static void send_report(struct k_work *work)
 
 		ret = hid_int_ep_write(hdev, (uint8_t *)ep_report_buffer, sizeof(report) * HID_EP_REPORT_COUNT, &wrote);
 
-		if (ret != 0) {
+		if (ret != 0)
+		{
 			/*
 			 * Do nothing and wait until host has reset the device
 			 * and hid_ep_in_busy is cleared.
 			 */
 			LOG_ERR("Failed to submit report");
-		} else {
-			//LOG_DBG("Report submitted");
 		}
-	} else { // busy with what
-		//LOG_DBG("HID IN endpoint busy");
+		else
+		{
+			// LOG_DBG("Report submitted");
+		}
+	}
+	else
+	{ // busy with what
+	  // LOG_DBG("HID IN endpoint busy");
 	}
 }
 
@@ -178,8 +192,10 @@ static void send_report(struct k_work *work)
 
 static void hid_dropped_reports_logging(void)
 {
-	while (1) {
-		if (dropped_reports) LOG_INF("Dropped reports: %u (max: %u)", dropped_reports, max_dropped_reports);
+	while (1)
+	{
+		if (dropped_reports)
+			LOG_INF("Dropped reports: %u (max: %u)", dropped_reports, max_dropped_reports);
 		dropped_reports = 0;
 		max_dropped_reports = 0;
 		k_msleep(DROPPED_REPORT_LOG_INTERVAL);
@@ -190,74 +206,54 @@ K_THREAD_DEFINE(hid_dropped_reports_logging_thread, 256, hid_dropped_reports_log
 
 static void read_report(struct k_work *work)
 {
-	if (!usb_enabled) return;
+	if (!usb_enabled)
+		return;
 
 	int ret, read;
 
-	if (!atomic_test_and_set_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG)) {
+	if (!atomic_test_and_set_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG))
+	{
 		ret = hid_int_ep_read(hdev, (uint8_t *)ep_read_buffer, sizeof(ep_read_buffer), &read);
 
-		if (ret != 0) {
+		if (ret != 0)
+		{
 			LOG_ERR("hid_int_ep_read: %d", ret);
-		} else {
+		}
+		else
+		{
 			LOG_INF("hid_int_ep_read: %d", read);
 			// do something here
 			/*
-			|Header |		|	
+			|Header |		|
 			 1-200	 Tracker
 			 201-254 Dongle
 
 			*/
-			LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
-				*(uint64_t *)(ep_read_buffer + 56),
-				*(uint64_t *)(ep_read_buffer + 48),
-				*(uint64_t *)(ep_read_buffer + 40),
-				*(uint64_t *)(ep_read_buffer + 32),
-				*(uint64_t *)(ep_read_buffer + 24),
-				*(uint64_t *)(ep_read_buffer + 16),
-				*(uint64_t *)(ep_read_buffer + 8),
-				*(uint64_t *)ep_read_buffer
-			);
-			
-			for (int offset = 0; offset < read; offset += 16) {
-            uint8_t *packet = ep_read_buffer + offset;
-            uint8_t packet_header = packet[0];
-			
-			if (packet_header == 0)
-				continue;
-
-			// Message is for tracker
-            if ((packet_header >= 1) & (packet_header <= 200)) {
-
-                uint8_t target_tracker_id = packet[0] - 1;
-
-                LOG_DBG("Received data for Tracker ID %d", 
-                        target_tracker_id);
-				
-				uint8_t tracker_command = packet[1];
-				hidToEsb command = {
-					.tracker_id = target_tracker_id,
-					.command = tracker_command,
-				};
-
-					LOG_DBG("Hid Report: Header=0x%02X, Tracker ID=%012llX, Command=%u", 
-						packet_header,
-						command.tracker_id, 
-						command.command);
-
-                k_msgq_put(&hid_to_esb_queue, &command, K_FOREVER);
-				}
-			}
+			/*
+				LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
+						*(uint64_t *)(ep_read_buffer + 56),
+						*(uint64_t *)(ep_read_buffer + 48),
+						*(uint64_t *)(ep_read_buffer + 40),
+						*(uint64_t *)(ep_read_buffer + 32),
+						*(uint64_t *)(ep_read_buffer + 24),
+						*(uint64_t *)(ep_read_buffer + 16),
+						*(uint64_t *)(ep_read_buffer + 8),
+						*(uint64_t *)ep_read_buffer);
+	*/
+			k_msgq_put(&hid_read_message, ep_read_buffer, K_NO_WAIT);
 		}
-	} else { // busy with what
-		//LOG_DBG("HID OUT endpoint busy");
+	}
+	else
+	{ // busy with what
+	  // LOG_DBG("HID OUT endpoint busy");
 	}
 }
 
 static void int_in_ready_cb(const struct device *dev)
 {
 	ARG_UNUSED(dev);
-	if (!atomic_test_and_clear_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG)) {
+	if (!atomic_test_and_clear_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG))
+	{
 		LOG_WRN("IN endpoint callback without preceding buffer write");
 	}
 	// TODO: can probably immediately write report from here
@@ -271,7 +267,8 @@ void hid_int_in_ready(void)
 static void int_out_ready_cb(const struct device *dev)
 {
 	ARG_UNUSED(dev);
-	if (!atomic_test_and_clear_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG)) {
+	if (!atomic_test_and_clear_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG))
+	{
 		LOG_WRN("OUT endpoint callback without preceding buffer write");
 	}
 	// TODO: can probably immediately read report from here
@@ -302,8 +299,7 @@ static void report_read_handler(struct k_timer *dummy)
 
 static void protocol_cb(const struct device *dev, uint8_t protocol)
 {
-	LOG_INF("New protocol: %s", protocol == HID_PROTOCOL_BOOT ?
-		"boot" : "report");
+	LOG_INF("New protocol: %s", protocol == HID_PROTOCOL_BOOT ? "boot" : "report");
 }
 
 static const struct hid_ops ops = {
@@ -316,7 +312,8 @@ static const struct hid_ops ops = {
 static int composite_pre_init()
 {
 	hdev = device_get_binding("HID_0");
-	if (hdev == NULL) {
+	if (hdev == NULL)
+	{
 		LOG_ERR("Cannot get USB HID Device");
 		return -ENODEV;
 	}
@@ -324,7 +321,7 @@ static int composite_pre_init()
 	LOG_INF("HID Device: dev %p", hdev);
 
 	usb_hid_register_device(hdev, hid_report_desc, sizeof(hid_report_desc),
-				&ops);
+							&ops);
 
 	atomic_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG);
 	k_timer_start(&event_timer, REPORT_PERIOD, REPORT_PERIOD);
@@ -332,10 +329,11 @@ static int composite_pre_init()
 	atomic_set_bit(hid_ep_out_busy, HID_EP_BUSY_FLAG);
 	k_timer_start(&read_timer, POLL_PERIOD, POLL_PERIOD);
 
-	if (usb_hid_set_proto_code(hdev, HID_BOOT_IFACE_CODE_NONE)) {
+	if (usb_hid_set_proto_code(hdev, HID_BOOT_IFACE_CODE_NONE))
+	{
 		LOG_WRN("Failed to set Protocol Code");
 	}
-
+	init_tracker_message_queues();
 	return usb_hid_init(hdev);
 }
 
@@ -374,37 +372,88 @@ void hid_init(void)
 void hid_write_packet_n(uint8_t *data, uint8_t rssi, size_t size)
 {
 	memcpy(&report.data, data, sizeof(report)); // all data can be passed through
-	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
+	if (data[0] != 1 && data[0] != 4)			// packet 1 and 4 are full precision quat and accel/mag, no room for rssi
 		report.data[15] = rssi;
 	// Get current FIFO status atomically
 	size_t write_idx = (size_t)atomic_get(&report_write_index);
 	size_t read_idx = (size_t)atomic_get(&report_read_index);
 
 	// Try to replace existing entry for the same tracker first
-	if (write_idx != read_idx) {
+	if (write_idx != read_idx)
+	{
 		// Start from read point + 1 to avoid hitting the entry being used
 		size_t check_index = read_idx + 1;
-		if (check_index == MAX_TRACKERS) check_index = 0;
+		if (check_index == MAX_TRACKERS)
+			check_index = 0;
 
-		while (check_index != write_idx) {
-			if (reports[check_index].data[1] == data[1]) {
+		while (check_index != write_idx)
+		{
+			if (reports[check_index].data[1] == data[1])
+			{
 				// Replace existing entry
 				reports[check_index] = report;
 				return;
 			}
 			check_index = check_index + 1;
-			if (check_index == MAX_TRACKERS) check_index = 0;
+			if (check_index == MAX_TRACKERS)
+				check_index = 0;
 		}
 	}
-	if (write_idx + 1 == read_idx || (write_idx == MAX_TRACKERS-1 && read_idx == 0)) { // overflow
-		dropped_reports ++;
+	if (write_idx + 1 == read_idx || (write_idx == MAX_TRACKERS - 1 && read_idx == 0))
+	{ // overflow
+		dropped_reports++;
 		return;
 	}
 	// Write new packet into FIFO
 	reports[write_idx] = report;
 
 	// Update write index atomically
-	write_idx ++;
-	if (write_idx == MAX_TRACKERS) write_idx = 0;
+	write_idx++;
+	if (write_idx == MAX_TRACKERS)
+		write_idx = 0;
 	atomic_set(&report_write_index, write_idx);
 }
+
+static void hid_to_esb_thread_handler()
+{
+	uint8_t parse_buffer[HID_PACKET_BUF_SIZE];
+
+	while (1)
+	{
+
+		k_msgq_get(&hid_read_message, parse_buffer, K_FOREVER);
+		for (int offset = 0; offset < 64; offset += 16)
+		{
+			uint8_t *packet = parse_buffer + offset;
+			uint8_t packet_header = packet[0];
+			/*
+			if (packet_header == 0)
+				continue;
+	*/
+			// Message is for tracker
+			if ((packet_header >= 1) & (packet_header <= 200))
+			{
+
+				uint8_t target_tracker_id = packet[0] - 1;
+
+				LOG_INF("Received data for Tracker ID %d",
+						target_tracker_id);
+
+				uint8_t tracker_command = packet[1];
+				hid_to_esb command = {
+					.tracker_id = target_tracker_id,
+					.command = tracker_command,
+				};
+
+				LOG_INF("Hid Report: Header=0x%02X, Tracker ID=%012llX, Command=%u",
+						packet_header,
+						command.tracker_id,
+						command.command);
+
+				k_msgq_put(&tracker_queues[command.tracker_id], &command, K_NO_WAIT);
+			}
+		}
+	}
+}
+
+K_THREAD_DEFINE(hid_to_esb_thread, 1024, hid_to_esb_thread_handler, NULL, NULL, NULL, 5, 0, 0);

@@ -29,12 +29,13 @@
 #include <zephyr/sys/crc.h>
 
 #include "esb.h"
+#include "message.h"
 
 static struct esb_payload rx_payload;
 static struct esb_payload tx_payload_dongle_sate = ESB_CREATE_PAYLOAD(0,
-														0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+																	  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 static struct esb_payload tx_payload_sync = ESB_CREATE_PAYLOAD(0,
-														  0, 0, 0, 0);
+															   0, 0, 0, 0);
 static struct esb_payload tx_payload_command = ESB_CREATE_PAYLOAD(0, 0);
 static const uint8_t discovery_base_addr_0[4] = {0x62, 0x39, 0x8A, 0xF2};
 static const uint8_t discovery_addr_prefix[8] = {0xFE, 0xFF, 0x29, 0x27, 0x09, 0x02, 0xB2, 0xD6};
@@ -51,7 +52,8 @@ LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
 static void esb_thread(void);
 K_THREAD_DEFINE(esb_thread_id, 1024, esb_thread, NULL, NULL, NULL, ESB_THREAD_PRIORITY, 0, 0);
 
-struct con_stat {
+struct con_stat
+{
 	uint8_t packets_received;
 	uint8_t packets_lost;
 	uint8_t windows_hit;
@@ -71,18 +73,20 @@ struct con_stat statistics[MAX_TRACKERS];
 // struct packet_stat packets_statistics[2048];
 // uint16_t next_packet_statistics = 0;
 
-extern struct k_msgq hid_to_esb_queue;
+extern struct k_msgq tracker_queues[];
 
-hidToEsb command;
+extern hid_to_esb command;
 
 static bool command_pending = false;
 
 // Use this to generate ACK packet to send to tracker when we receive data from it
 // Ideally, it should return as fast as possible
 // Also must not execute any sys calls like sys_write and etc.
-void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload) {
+void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload)
+{
 	// Handle new pairing requests
-	if(data_length == 8 && pipe_id == 0 && new_paired_address == 0) {
+	if (data_length == 8 && pipe_id == 0 && new_paired_address == 0)
+	{
 		// TODO Implement proper pairing by packet header and such
 		// see proposal https://github.com/SlimeVR/SlimeVR-Tracker-nRF/issues/145
 		//
@@ -90,7 +94,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		uint8_t checksum = crc8_ccitt(0x07, &pdu_data[2], 6);
 		if (checksum == 0)
 			checksum = 8;
-		if (checksum != pdu_data[0]) {
+		if (checksum != pdu_data[0])
+		{
 			LOG_INF("Checksum error %d != %d", checksum, pdu_data[0]);
 			return;
 		}
@@ -98,14 +103,15 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		uint64_t found_addr = (*(uint64_t *)&pdu_data[2]) & 0xFFFFFFFFFFFF;
 		LOG_INF("Pairing request from %012llX", found_addr);
 		uint16_t send_tracker_id = stored_trackers; // Use new tracker id
-		for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+		for (int i = 0; i < stored_trackers; i++)	// Check if the device is already stored
 		{
 			if (found_addr != 0 && stored_tracker_addr[i] == found_addr)
 			{
 				send_tracker_id = i;
 			}
 		}
-		if (send_tracker_id >= MAX_TRACKERS) {
+		if (send_tracker_id >= MAX_TRACKERS)
+		{
 			LOG_INF("Too many registered trackers! %d >= %d", send_tracker_id, MAX_TRACKERS);
 			return;
 		}
@@ -115,7 +121,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			// to avoid syscalls in the handler
 			new_paired_address = found_addr;
 		}
-		ack_payload->data[0] = checksum; // Use checksum sent from device to make sure packet is for that device
+		ack_payload->data[0] = checksum;		// Use checksum sent from device to make sure packet is for that device
 		ack_payload->data[1] = send_tracker_id; // Add tracker id to packet
 		// Send our own address back
 		uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
@@ -123,31 +129,22 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		ack_payload->length = 8;
 		*has_ack_payload = true;
 	}
-	if(pipe_id > 0) {
+	if (pipe_id > 0)
+	{
 		uint8_t packet_number = pdu_data[0]; // Sequence number
 		ack_payload->data[0] = packet_number;
 		// Check tracker's timing window and send its offset for TDMA
 		uint32_t tdma_timer = tdma_get_timer();
 		uint8_t tracker_window = 0;
 		uint8_t tracker_id = pdu_data[2]; // Tracker ID is always at byte 2
-		if(tracker_id == WRONG_TRACKER_ID) {
+		if (tracker_id == WRONG_TRACKER_ID)
+		{
 			// Not tracker packet, skip
 			return;
 		}
-
-		if (command_pending && command.tracker_id == tracker_id) {
-			uint8_t packet_number = pdu_data[0];
-            ack_payload->data[0] = packet_number;
-			ack_payload->data[1] = command.command;
-            ack_payload->length = 2;
-            *has_ack_payload = true;
-            command_pending = false;
-            LOG_INF("Command 0x%02X attached to ACK for tracker %d", command.command, tracker_id);
-            return;
-        }
-
 		tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
-		if(tracker_window == TDMA_WRONG_WINDOW) {
+		if (tracker_window == TDMA_WRONG_WINDOW)
+		{
 			// No windows left for this tracker, reject it
 			ack_payload->data[1] = ESB_PACKET_CONTROL_NO_WINDOWS; // No Windows (234)
 			ack_payload->length = 2;
@@ -157,10 +154,25 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		uint32_t current_slot = tdma_get_slot(tdma_timer);
 		uint8_t current_window = tdma_get_window(current_slot);
 		current_window_state = current_window;
-		if(!tdma_is_dongle_window(current_slot) && current_window == tracker_window) {
+		if (!tdma_is_dongle_window(current_slot) && current_window == tracker_window)
+		{
 			// Tracker sent data at the correct time, we can send data to it if we have
 			// TODO : Send data if we have for this tracker
-		} // else {
+			command_pending = (k_msgq_num_used_get(&tracker_queues[tracker_id]) > 0);
+			if (command_pending)
+			{
+				k_msgq_get(&tracker_queues[tracker_id], &command, K_NO_WAIT);
+				uint8_t packet_number = pdu_data[0];
+				ack_payload->data[0] = packet_number;
+				ack_payload->data[1] = command.command;
+				ack_payload->length = 2;
+				*has_ack_payload = true;
+				command_pending = false;
+				LOG_INF("Command 0x%02X attached to ACK for tracker %d", command.command, tracker_id);
+			}
+		}
+		else
+		{
 			// Send Window Info (5) if we don't have anything better
 			// TODO : We should send one at least once every 20-100 packets to prevent timer drift
 			ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (235)
@@ -168,13 +180,14 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			memcpy(&ack_payload->data[3], &tdma_timer, sizeof(tdma_timer));
 			ack_payload->length = 7;
 			*has_ack_payload = true;
-		// }
+		}
 
-		struct con_stat* stat = &statistics[tracker_id];
+		struct con_stat *stat = &statistics[tracker_id];
 
-		if(packet_number != stat->last_packet_number) {
+		if (packet_number != stat->last_packet_number)
+		{
 			stat->packets_received++;
-			if(tracker_window != current_window)
+			if (tracker_window != current_window)
 				stat->windows_missed++;
 			else
 				stat->windows_hit++;
@@ -182,7 +195,9 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			uint8_t diff = packet_number - stat->last_packet_number;
 			stat->packets_lost += diff - 1;
 			stat->last_packet_number = packet_number;
-		} else {
+		}
+		else
+		{
 			stat->repeat_packets++;
 		}
 
@@ -219,23 +234,30 @@ void event_handler(struct esb_evt const *event)
 		while (!err) // zero, rx success
 		{
 			err = esb_read_rx_payload(&rx_payload);
-			if (err == -ENODATA) {
+			if (err == -ENODATA)
+			{
 				return;
-			} else if (err) {
+			}
+			else if (err)
+			{
 				LOG_ERR("Error while reading rx packet: %d", err);
 				return;
 			}
-			if(rx_payload.length < 3) {
+			if (rx_payload.length < 3)
+			{
 				LOG_ERR("Too short packet received");
 				return;
 			}
-			
-			if(rx_payload.data[1] > ESB_PACKET_DONGLE_PACKETS) {
+
+			if (rx_payload.data[1] > ESB_PACKET_DONGLE_PACKETS)
+			{
 				// Packet for dongle received
 
-				if(rx_payload.data[1] > ESB_PACKET_CONTROL_PACKETS) {
+				if (rx_payload.data[1] > ESB_PACKET_CONTROL_PACKETS)
+				{
 					// Control packet received
-					switch(rx_payload.data[1]) {
+					switch (rx_payload.data[1])
+					{
 					default:
 						// Dongle will ignore all control packets by default
 						LOG_INF("Control packet %d received", rx_payload.data[1]);
@@ -243,16 +265,18 @@ void event_handler(struct esb_evt const *event)
 				}
 			}
 
-			if(rx_payload.pipe == 0)
+			if (rx_payload.pipe == 0)
 				continue; // Handled in ACK handler
-				
-			if (rx_payload.length >= 17) {
+
+			if (rx_payload.length >= 17)
+			{
 				uint8_t tracker_id = rx_payload.data[2];
 				if (tracker_id >= stored_trackers) // not a stored tracker
 					continue;
-				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
+				if (tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
 					break;
-				if(rx_payload.data[1] == 3) { // status
+				if (rx_payload.data[1] == 3)
+				{ // status
 					// Fill in packet lost statistics in status packet
 					rx_payload.data[5] = statistics[tracker_id].packets_received;
 					rx_payload.data[6] = statistics[tracker_id].packets_lost;
@@ -268,7 +292,9 @@ void event_handler(struct esb_evt const *event)
 				}
 				hid_write_packet_n(rx_payload.data + 1, rx_payload.rssi, 16); // write to hid endpoint
 				break;
-			} else {
+			}
+			else
+			{
 				LOG_ERR("Wrong packet length: %d", rx_payload.length);
 				break;
 			}
@@ -309,7 +335,8 @@ int clocks_start(void)
 			LOG_ERR("Clock could not be started: %d", res);
 			return res;
 		}
-		if (err && ++fetch_attempts > 10000) {
+		if (err && ++fetch_attempts > 10000)
+		{
 			LOG_WRN("Unable to fetch Clock request result: %d", err);
 			return err;
 		}
@@ -321,8 +348,9 @@ int clocks_start(void)
 
 // this was randomly generated
 
-void esb_deinitialize() {
-	if(!esb_initialized)
+void esb_deinitialize()
+{
+	if (!esb_initialized)
 		return;
 	esb_initialized = false;
 	esb_disable();
@@ -349,7 +377,7 @@ int esb_initialize(bool tx)
 		config.tx_mode = ESB_TXMODE_MANUAL;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = false;
+		//		config.use_fast_ramp_up = false;
 		config.ack_handler = ack_handler;
 	}
 	else
@@ -365,7 +393,7 @@ int esb_initialize(bool tx)
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
-//		config.use_fast_ramp_up = false;
+		//		config.use_fast_ramp_up = false;
 		config.ack_handler = ack_handler;
 	}
 
@@ -416,7 +444,8 @@ inline void esb_set_addr(void)
 	memcpy(addr_prefix, discovery_addr_prefix, sizeof(addr_prefix));
 }
 
-int esb_get_frequency(void) {
+int esb_get_frequency(void)
+{
 	uint32_t channel;
 	esb_get_rf_channel(&channel);
 	return 2400UL + channel; // MHz
@@ -456,7 +485,7 @@ void esb_add_pair(uint64_t addr, bool checksum)
 			checksum = 8;
 		uint64_t *receiver_addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet
 		addr = (*receiver_addr & 0xFFFFFFFFFFFF) << 16;
-		addr |= checksum; // Add checksum to the address
+		addr |= checksum;		   // Add checksum to the address
 		addr |= (uint64_t)id << 8; // Add tracker id to the address
 		LOG_INF("Pair the device with %016llX", addr);
 	}
@@ -483,35 +512,40 @@ void esb_clear(void)
 	LOG_INF("NVS Reset");
 }
 
-bool is_dongle_window() {
+bool is_dongle_window()
+{
 	uint32_t tdma_timer = tdma_get_timer();
 	uint32_t current_slot = tdma_get_slot(tdma_timer);
 	return tdma_is_dongle_window(current_slot);
 }
 
-void prepare_dongle_sate_packet() {
+void prepare_dongle_sate_packet()
+{
 	tx_payload_dongle_sate.noack = false;
 	tx_payload_dongle_sate.data[0] = 0xCD;
 	tx_payload_dongle_sate.data[2] = 3;
 	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
 	memcpy(&tx_payload_dongle_sate.data[3], addr, 6);
-	uint8_t has_empty_windows_flag = (tdma_has_empty_windows() ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
-	uint8_t force_pairing_flag = (0) << 1; // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
+	uint8_t has_empty_windows_flag = (tdma_has_empty_windows() ? 1 : 0) << 0;	  // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
+	uint8_t force_pairing_flag = (0) << 1;										  // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
 	tx_payload_dongle_sate.data[9] = has_empty_windows_flag | force_pairing_flag; // Dongle sate flags
-	uint8_t channels_set = 0; // Channels bundle - 4 bits - which channels bundle this dongle hops on
-	uint8_t channel_offset = 0 << 4; // Next channel offset - 4 bits - which channel bundle this dongle will move next after this broadcast
-	tx_payload_dongle_sate.data[10] = channels_set | channel_offset; // Channels
+	uint8_t channels_set = 0;													  // Channels bundle - 4 bits - which channels bundle this dongle hops on
+	uint8_t channel_offset = 0 << 4;											  // Next channel offset - 4 bits - which channel bundle this dongle will move next after this broadcast
+	tx_payload_dongle_sate.data[10] = channels_set | channel_offset;			  // Channels
 }
 
-void prepare_command_packet() {
+void prepare_command_packet()
+{
 	tx_payload_command.noack = true;
 	tx_payload_command.data[0] = ESB_COMMAND_PREAMBLE;
 	tx_payload_command.data[1] = command.command;
 }
 
-void read_message_queue() {
-	uint8_t err = k_msgq_get(&hid_to_esb_queue, &command, K_NO_WAIT);
-	if (err) {
+void read_message_queue()
+{
+	uint8_t err = k_msgq_get(&tracker_queues[command.tracker_id], &command, K_NO_WAIT);
+	if (err)
+	{
 		LOG_DBG("No message received %d", err);
 		return;
 	}
@@ -535,15 +569,19 @@ static void esb_thread(void)
 
 	bool was_dongle_window = false;
 
-	while(1) {
-		if(new_paired_address != 0) {
+	while (1)
+	{
+		if (new_paired_address != 0)
+		{
 			esb_add_pair(new_paired_address, false);
 			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_HIGHEST);
 			new_paired_address = 0;
 		}
 		read_message_queue();
-		if(is_dongle_window()) {
-			if(!was_dongle_window) {
+		if (is_dongle_window())
+		{
+			if (!was_dongle_window)
+			{
 				was_dongle_window = true;
 				// for(int i = 0; i < MAX_TRACKERS; ++i) {
 				// 	if(statistics[i].packets_received > 0) {
@@ -566,24 +604,22 @@ static void esb_thread(void)
 
 				prepare_dongle_sate_packet();
 				esb_write_payload(&tx_payload_dongle_sate);
-				if (command_pending) {
-					LOG_INF("Command pending");
-					prepare_command_packet();
-					esb_write_payload(&tx_payload_command);
-				}
 				esb_start_tx();
 
-				while(!esb_is_idle())
-					k_msleep(1);
-				
+				while (!esb_is_idle())
+					k_yield();
+
 				esb_deinitialize();
 				esb_initialize(false);
 				esb_start_rx();
-				if(!is_dongle_window()) {
+				if (!is_dongle_window())
+				{
 					LOG_WRN("Took too long in dongle window!");
 				}
 			}
-		} else {
+		}
+		else
+		{
 			was_dongle_window = false;
 			k_msleep(10);
 		}
