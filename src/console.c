@@ -178,7 +178,6 @@ static void print_help(void)
 	printk("list                         Get paired devices\n");
 	printk("reboot                       Soft reset the device\n");
 	printk("\nadd <address>                Manually add a device\n");
-	printk("remove                       Remove last device\n");
 	printk("pair                         Enter pairing mode\n");
 	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
@@ -205,7 +204,6 @@ static void console_thread(void)
 	const char command_list[] = "list";
 	const char command_reboot[] = "reboot";
 	const char command_add[] = "add";
-	const char command_remove[] = "remove";
 	const char command_pair[] = "pair";
 	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
@@ -250,13 +248,9 @@ static void console_thread(void)
 			uint8_t buf[13];
 			snprintk(buf, 13, "%012llx", addr);
 			if (addr != 0 && strcmp(buf, argv[1]) == 0)
-				esb_add_pair(addr, true);
+				esb_add_pair(addr);
 			else
 				printk("Invalid address\n");
-		}
-		else if (strcmp(line, command_remove) == 0)
-		{
-			esb_pop_pair();
 		}
 		else if (strcmp(line, command_list) == 0)
 		{
