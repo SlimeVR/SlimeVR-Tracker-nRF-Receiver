@@ -26,15 +26,3 @@
 
 #include "retained.h"
 #include "thread_priority.h"
-
-#ifndef CONFIG_SOC_NRF52820
-#define MAX_TRACKERS 32
-#else
-#define MAX_TRACKERS 24
-#endif
-
-#define WRONG_TRACKER_ID 255
-
-// TODO: move to esb
-extern uint8_t stored_trackers;
-extern uint64_t stored_tracker_addr[MAX_TRACKERS];

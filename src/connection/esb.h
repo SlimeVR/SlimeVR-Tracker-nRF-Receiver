@@ -24,6 +24,7 @@
 #define SLIMENRF_ESB
 
 #include <esb.h>
+#include "tdma.h"
 
 #define ESB_VERSION 2
 #define PROTOCOL_VERSION 2
@@ -35,17 +36,22 @@
 #define ESB_PACKET_DONGLE_PACKETS 200
 #define ESB_PACKET_CONTROL_PACKETS 230
 
+#define ESB_PACKET_DONGLE_CONNECT 201
+#define ESB_PACKET_DONGLE_CONNECT_REPLY 202
+#define ESB_PACKET_DONGLE_RECONNECT 203
+
 #define ESB_PACKET_CONTROL_PAIR_REQEST 231
 #define ESB_PACKET_CONTROL_PAIR_RESPONSE 232
 #define ESB_PACKET_CONTROL_DONGLE_STATUS 233
-#define ESB_PACKET_CONTROL_NO_WINDOWS 234
+#define ESB_PACKET_CONTROL_NO_WINDOWS 234 // Not used, reserved
 #define ESB_PACKET_CONTROL_WINDOW_INFO 235
 
 #define ESB_PACKET_CONTROL_TEST 250
 
-#define ESB_PAIR_STATUS_ERROR 200
-#define ESB_PAIR_STATUS_NO_SLOTS 201
-#define ESB_PAIR_STATUS_NOT_ACCEPTING 202
+#define ESB_STATUS_ERROR 200
+#define ESB_STATUS_NO_SLOTS 201
+#define ESB_STATUS_NOT_ACCEPTING 202
+#define ESB_STATUS_NOT_PAIRED 203
 
 #define ESB_EMPTY_PAYLOAD(_pipe, _length) \
 	{                                     \
@@ -54,17 +60,19 @@
 		.data = { 0 }                     \
 	}
 
+#define WRONG_TRACKER_ID 255
+
+extern uint8_t stored_trackers;
+extern uint64_t stored_tracker_addr[MAX_TRACKERS];
+
 void event_handler(struct esb_evt const *event);
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
 int clocks_start(void);
-int esb_initialize(bool, bool);
-
+int esb_initialize(bool tx, bool advertize);
+uint8_t esb_get_tracker_id(uint64_t addr);
 void esb_set_addr(void);
-
 int esb_get_frequency(void);
-
 uint8_t esb_add_pair(uint64_t addr);
-
 void esb_clear(void);
 
 enum dongle_state_t {

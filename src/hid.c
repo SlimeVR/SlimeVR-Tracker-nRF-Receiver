@@ -21,6 +21,7 @@
 	THE SOFTWARE.
 */
 #include "globals.h"
+#include "connection/esb.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usb_device.h>

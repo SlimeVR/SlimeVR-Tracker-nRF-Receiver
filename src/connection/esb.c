@@ -56,6 +56,8 @@ static enum dongle_state_t dongle_state = CHANNEL_SELECT;
 static uint64_t channel_discovery_time = 0;
 static uint8_t currentESBChannel = ESB_RIMARY_ADVERTISEMENT_CHANNEL;
 static bool write_stored_trackers = false;
+uint8_t stored_trackers = 0;
+uint64_t stored_tracker_addr[MAX_TRACKERS] = {0};
 
 struct con_stat {
 	uint8_t packets_received;
@@ -101,8 +103,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			}
 			ack_payload->data[1] = ESB_PACKET_CONTROL_PAIR_RESPONSE;
 			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
-			uint8_t response = accepts_pairing ? esb_add_pair(tracker_hwid) : ESB_PAIR_STATUS_NOT_ACCEPTING; // TODO Can we???
-			if(response >= ESB_PAIR_STATUS_ERROR) {
+			uint8_t response = accepts_pairing ? esb_add_pair(tracker_hwid) : ESB_STATUS_NOT_ACCEPTING; // TODO Can we???
+			if(response >= ESB_STATUS_ERROR) {
 				LOG_INF("Can't add tracker %012llX, reason: %d", tracker_hwid, response);
 			} else {
 				LOG_INF("Added tracker %012llX with tracker id %d", tracker_hwid, response);
@@ -116,16 +118,19 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			return;
 		}
 	} else {
-		uint8_t packet_number = pdu_data[0]; // Sequence number
+		const uint8_t packet_number = pdu_data[0]; // Sequence number
+		const uint8_t packet_id = pdu_data[1];
+		const uint8_t tracker_id = pdu_data[2];
 		ack_payload->data[0] = packet_number;
-		if(pdu_data[1] ==  ESB_PACKET_CONTROL_PAIR_REQEST) {
+		switch(packet_id) {
+		case ESB_PACKET_CONTROL_PAIR_REQEST:
 			if(data_length < 15) {
 				return;
 			}
 			ack_payload->data[1] = ESB_PACKET_CONTROL_PAIR_RESPONSE;
 			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
-			uint8_t response = accepts_pairing ? esb_add_pair(tracker_hwid) : ESB_PAIR_STATUS_NOT_ACCEPTING; // TODO Can we???
-			if(response >= ESB_PAIR_STATUS_ERROR) {
+			uint8_t response = accepts_pairing ? esb_add_pair(tracker_hwid) : ESB_STATUS_NOT_ACCEPTING; // TODO Can we???
+			if(response >= ESB_STATUS_ERROR) {
 				LOG_INF("Can't add tracker %012llX, reason: %d", tracker_hwid, response);
 			} else {
 				LOG_INF("Added tracker %012llX with tracker id %d", tracker_hwid, response);
@@ -137,20 +142,41 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			ack_payload->length = 15;
 			*has_ack_payload = true;
 			return;
+		case ESB_PACKET_DONGLE_CONNECT:
+			ack_payload->data[1] = ESB_PACKET_DONGLE_CONNECT_REPLY;
+			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
+			memcpy(&ack_payload->data[3], &tracker_hwid, 6);
+			ack_payload->data[7] = ESB_VERSION;
+			ack_payload->data[8] = PROTOCOL_VERSION;
+			uint8_t real_tracker_id = esb_get_tracker_id(tracker_hwid);
+			if(real_tracker_id == WRONG_TRACKER_ID) {
+				ack_payload->data[2] = ESB_STATUS_NOT_PAIRED;
+			} else {
+				uint8_t tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
+				if(tracker_window == TDMA_WRONG_WINDOW) {
+					ack_payload->data[2] = ESB_STATUS_NO_SLOTS;
+				} else {
+					ack_payload->data[2] = tracker_id;
+				}
+			}
+			ack_payload->length = 9;
+			*has_ack_payload = true;
+			return;
 		}
 		// Check tracker's timing window and send its offset for TDMA
 		uint32_t tdma_timer = tdma_get_timer();
 		uint8_t tracker_window = 0;
-		uint8_t tracker_id = pdu_data[2]; // Tracker ID is always at byte 2
 		if(tracker_id == WRONG_TRACKER_ID) {
 			// Not tracker packet, skip
 			return;
 		}
-		tracker_window = tdma_get_or_allocate_tracker_window(tracker_id);
+		tracker_window = tdma_get_tracker_window(tracker_id);
 		if(tracker_window == TDMA_WRONG_WINDOW) {
-			// No windows left for this tracker, reject it
-			ack_payload->data[1] = ESB_PACKET_CONTROL_NO_WINDOWS; // No Windows (234)
-			ack_payload->length = 2;
+			// Tracker isn't assigned a window, ask it to send connect packet
+			ack_payload->data[1] = ESB_PACKET_DONGLE_RECONNECT;
+			ack_payload->data[2] = ESB_VERSION;
+			ack_payload->data[3] = PROTOCOL_VERSION;
+			ack_payload->length = 4;
 			*has_ack_payload = true;
 			return;
 		}
@@ -183,7 +209,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			stat->packets_lost += diff - 1;
 			stat->last_packet_number = packet_number;
 			stat->max_gap = MAX(stat->max_gap, diff - 1);
-			if(is_rotation_packet(pdu_data[1])) {
+			if(is_rotation_packet(packet_id)) {
 				uint8_t r_diff = packet_number - stat->last_rotation_packet;
 				stat->max_rotation_gap = MAX(stat->max_rotation_gap, r_diff - 1);
 				stat->last_rotation_packet = packet_number;
@@ -250,45 +276,40 @@ void event_handler(struct esb_evt const *event)
 			
 			if(rx_payload.data[1] > ESB_PACKET_DONGLE_PACKETS) {
 				// Packet for dongle received
-
-				if(rx_payload.data[1] > ESB_PACKET_CONTROL_PACKETS) {
-					// Control packet received
-					switch(rx_payload.data[1]) {
-					case ESB_PACKET_CONTROL_DONGLE_STATUS:
-						#if SWEEP_TEST
-							return;
-						#endif
-						if(rx_payload.length < 11) {
-							LOG_ERR("Too short packet received");
-							return;
-						}
-						uint64_t dongle_hwid = *((uint64_t *) &rx_payload.data[2]) & 0xFFFFFFFFFFFF;
-						uint8_t channel = rx_payload.data[8];
-						for(int i = 0; i < sizeof(occupied_channels); ++i) {
-							if(occupied_channels[i] == 0) {
-								occupied_channels[i] = channel;
-								LOG_INF("Found neighboring dongle %012llX on channel %d", dongle_hwid, channel);
-								break;
-							} else if(occupied_channels[i] == channel) {
-								break;
-							}
-						}
-						if(occupied_channels[sizeof(occupied_channels) - 1] != 0) {
-							LOG_ERR("No empty channels left on the air, terminating search.");
-							// TODO Restart search later?
-							dongle_state = NO_CHANNELS;
-							return;
-						}
-					break;
-					case ESB_PACKET_CONTROL_TEST:
-						sweep_control_test_rcvd(rx_payload);
-					break;
-					default:
-						// Dongle will ignore all control packets by default
-						#if !SWEEP_TEST
-						LOG_INF("Control packet %d received", rx_payload.data[1]);
-						#endif
+				switch(rx_payload.data[1]) {
+				case ESB_PACKET_CONTROL_DONGLE_STATUS:
+					#if SWEEP_TEST
+						return;
+					#endif
+					if(rx_payload.length < 11) {
+						LOG_ERR("Too short packet received");
+						return;
 					}
+					uint64_t dongle_hwid = *((uint64_t *) &rx_payload.data[2]) & 0xFFFFFFFFFFFF;
+					uint8_t channel = rx_payload.data[8];
+					for(int i = 0; i < sizeof(occupied_channels); ++i) {
+						if(occupied_channels[i] == 0) {
+							occupied_channels[i] = channel;
+							LOG_INF("Found neighboring dongle %012llX on channel %d", dongle_hwid, channel);
+							break;
+						} else if(occupied_channels[i] == channel) {
+							break;
+						}
+					}
+					if(occupied_channels[sizeof(occupied_channels) - 1] != 0) {
+						LOG_ERR("No empty channels left on the air, terminating search.");
+						// TODO Restart search later?
+						dongle_state = NO_CHANNELS;
+						return;
+					}
+				break;
+				case ESB_PACKET_CONTROL_TEST:
+					sweep_control_test_rcvd(rx_payload);
+				break;
+				default:
+					#if !SWEEP_TEST
+						LOG_INF("Control packet %d received", rx_payload.data[1]);
+					#endif
 				}
 			}
 
@@ -471,7 +492,6 @@ int esb_get_frequency(void) {
 
 uint8_t esb_add_pair(uint64_t addr)
 {
-	// TODO Why can we store more trackers than we have TDMA slots?
 	int id = stored_trackers;
 	for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
 	{
@@ -483,7 +503,7 @@ uint8_t esb_add_pair(uint64_t addr)
 	if (id == stored_trackers)
 	{
 		if(id == sizeof(stored_tracker_addr))
-			return ESB_PAIR_STATUS_NO_SLOTS;
+			return ESB_STATUS_NO_SLOTS;
 		LOG_INF("Added device on id %d with address %012llX", id, addr);
 		stored_tracker_addr[id] = addr;
 		stored_trackers++;
@@ -494,6 +514,15 @@ uint8_t esb_add_pair(uint64_t addr)
 		LOG_INF("Device already stored with id %d", id);
 	}
 	return id;
+}
+
+uint8_t esb_get_tracker_id(uint64_t addr) {
+	for (int i = 0; i < stored_trackers; i++) {
+		if (stored_tracker_addr[i] == addr) {
+			return i;
+		}
+	}
+	return WRONG_TRACKER_ID;
 }
 
 void esb_clear(void)

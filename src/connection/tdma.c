@@ -21,15 +21,16 @@
 	THE SOFTWARE.
 */
 #include "tdma.h"
+#include "esb.h"
 #include <zephyr/kernel.h>
 
 uint8_t tdma_tracker_to_window[MAX_TRACKERS];
-uint8_t tdma_windows[TDMA_MAX_TRACKERS];
+uint8_t tdma_windows[MAX_TRACKERS];
 
 LOG_MODULE_REGISTER(tdma, LOG_LEVEL_INF);
 
 void tdma_init() {
-     for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
+     for(int i = 0; i < MAX_TRACKERS; ++i) {
         tdma_windows[i] = WRONG_TRACKER_ID;
      }
      for(int i = 0; i < MAX_TRACKERS; ++i) {
@@ -46,7 +47,7 @@ uint32_t tdma_get_slot(uint32_t timer) {
 }
 
 uint8_t tdma_get_window(uint32_t slot) {
-    return (slot - TDMA_DONGLE_SLOTS) % TDMA_MAX_TRACKERS;
+    return (slot - TDMA_DONGLE_SLOTS) % MAX_TRACKERS;
 }
 
 bool tdma_is_dongle_window(uint32_t slot) {
@@ -61,7 +62,7 @@ uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
     uint8_t window = tdma_tracker_to_window[tracker_id];
     if(window == TDMA_WRONG_WINDOW) {
         // No window is allocated to the tracker, try to find an empty one and allocate
-        for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
+        for(int i = 0; i < MAX_TRACKERS; ++i) {
             if(tdma_windows[i] == TDMA_WRONG_WINDOW) {
                 window = i;
                 tdma_windows[i] = tracker_id;
@@ -75,16 +76,10 @@ uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
 }
 
 bool tdma_has_empty_windows() {
-     for(int i = 0; i < TDMA_MAX_TRACKERS; ++i) {
+     for(int i = 0; i < MAX_TRACKERS; ++i) {
         if(tdma_windows[i] == WRONG_TRACKER_ID) {
             return true;
         }
     }
     return false;
-}
-
-// Tracker communicated with the dongle, record last time
-// So we can de-allocated windows for trackers that aren't connected anymore
-uint8_t tdma_touch_tracker(uint8_t tracker_id) {
-
 }
