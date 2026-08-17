@@ -144,7 +144,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			return;
 		case ESB_PACKET_DONGLE_CONNECT:
 			ack_payload->data[1] = ESB_PACKET_DONGLE_CONNECT_REPLY;
-			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
+			tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
 			memcpy(&ack_payload->data[3], &tracker_hwid, 6);
 			ack_payload->data[7] = ESB_VERSION;
 			ack_payload->data[8] = PROTOCOL_VERSION;
