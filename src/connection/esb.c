@@ -496,7 +496,7 @@ uint8_t esb_add_pair(uint64_t addr)
 	}
 	if (id == stored_trackers)
 	{
-		if(id == (sizeof(stored_tracker_addr) / sizeof(stored_tracker_addr[0]))
+		if(id == (sizeof(stored_tracker_addr) / sizeof(stored_tracker_addr[0])))
 			return ESB_STATUS_NO_SLOTS;
 		LOG_INF("Added device on id %d with address %012llX", id, addr);
 		stored_tracker_addr[id] = addr;
