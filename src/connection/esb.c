@@ -484,17 +484,19 @@ int esb_get_frequency(void) {
 
 uint8_t esb_add_pair(uint64_t addr)
 {
+	if(addr == 0)
+		return ESB_STATUS_ERROR;
 	int id = stored_trackers;
 	for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
 	{
-		if (addr != 0 && stored_tracker_addr[i] == addr)
+		if (stored_tracker_addr[i] == addr)
 		{
 			id = i;
 		}
 	}
 	if (id == stored_trackers)
 	{
-		if(id == sizeof(stored_tracker_addr))
+		if(id == (sizeof(stored_tracker_addr) / sizeof(stored_tracker_addr[0]))
 			return ESB_STATUS_NO_SLOTS;
 		LOG_INF("Added device on id %d with address %012llX", id, addr);
 		stored_tracker_addr[id] = addr;
@@ -503,7 +505,7 @@ uint8_t esb_add_pair(uint64_t addr)
 	}
 	else
 	{
-		LOG_INF("Device already stored with id %d", id);
+		LOG_INF("Device %012llX is already stored with id %d", addr, id);
 	}
 	return id;
 }
