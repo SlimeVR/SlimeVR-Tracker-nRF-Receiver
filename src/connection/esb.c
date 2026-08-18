@@ -31,6 +31,10 @@
 #include "esb.h"
 #include "nettests.h"
 
+#if RSSI_SCAN
+#include "rssi.h"
+#endif
+
 #define FREQUENCY_HOPPING false
 
 LOG_MODULE_REGISTER(esb_event, LOG_LEVEL_INF);
@@ -94,30 +98,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 	#if SWEEP_TEST
 		return;
 	#endif
-	if(pipe_id == 0) {
-		uint8_t packet_number = pdu_data[0]; // Sequence number
-		ack_payload->data[0] = packet_number;
-		if(pdu_data[1] ==  ESB_PACKET_CONTROL_PAIR_REQEST) {
-			if(data_length < 15) {
-				return;
-			}
-			ack_payload->data[1] = ESB_PACKET_CONTROL_PAIR_RESPONSE;
-			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
-			uint8_t response = accepts_pairing ? esb_add_pair(tracker_hwid) : ESB_STATUS_NOT_ACCEPTING; // TODO Can we???
-			if(response >= ESB_STATUS_ERROR) {
-				LOG_INF("Can't add tracker %012llX, reason: %d", tracker_hwid, response);
-			} else {
-				LOG_INF("Added tracker %012llX with tracker id %d", tracker_hwid, response);
-			}
-			ack_payload->data[2] = response;
-			uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
-			memcpy(&ack_payload->data[3], addr, 6);
-			memcpy(&ack_payload->data[9], &tracker_hwid, 6);
-			ack_payload->length = 15;
-			*has_ack_payload = true;
-			return;
-		}
-	} else {
+	if(pipe_id != 0) {
 		const uint8_t packet_number = pdu_data[0]; // Sequence number
 		const uint8_t packet_id = pdu_data[1];
 		const uint8_t tracker_id = pdu_data[2];
@@ -125,6 +106,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		switch(packet_id) {
 		case ESB_PACKET_CONTROL_PAIR_REQEST:
 			if(data_length < 15) {
+				LOG_WRN("Short pairing packet received: %d byes", data_length);
 				return;
 			}
 			ack_payload->data[1] = ESB_PACKET_CONTROL_PAIR_RESPONSE;
@@ -143,11 +125,15 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			*has_ack_payload = true;
 			return;
 		case ESB_PACKET_DONGLE_CONNECT:
+			if(data_length < 11) {
+				LOG_WRN("Short connect packet received: %d byes", data_length);
+				return;
+			}
 			ack_payload->data[1] = ESB_PACKET_DONGLE_CONNECT_REPLY;
 			tracker_hwid = *((uint64_t *) &pdu_data[3]) & 0xFFFFFFFFFFFF;
 			memcpy(&ack_payload->data[3], &tracker_hwid, 6);
-			ack_payload->data[7] = ESB_VERSION;
-			ack_payload->data[8] = PROTOCOL_VERSION;
+			ack_payload->data[9] = ESB_VERSION;
+			ack_payload->data[10] = PROTOCOL_VERSION;
 			uint8_t real_tracker_id = esb_get_tracker_id(tracker_hwid);
 			if(real_tracker_id == WRONG_TRACKER_ID) {
 				ack_payload->data[2] = ESB_STATUS_NOT_PAIRED;
@@ -159,7 +145,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 					ack_payload->data[2] = tracker_id;
 				}
 			}
-			ack_payload->length = 9;
+			ack_payload->length = 11;
+			LOG_INF("Connect packet received from %012llX, response: %d", tracker_hwid, ack_payload->data[2]);
 			*has_ack_payload = true;
 			return;
 		}
@@ -290,7 +277,7 @@ void event_handler(struct esb_evt const *event)
 					for(int i = 0; i < sizeof(occupied_channels); ++i) {
 						if(occupied_channels[i] == 0) {
 							occupied_channels[i] = channel;
-							LOG_INF("Found neighboring dongle %012llX on channel %d", dongle_hwid, channel);
+							LOG_INF("Found neighboring dongle %012llX on channel %d with RSSI -%d", dongle_hwid, channel, rx_payload.rssi);
 							break;
 						} else if(occupied_channels[i] == channel) {
 							break;
@@ -306,11 +293,16 @@ void event_handler(struct esb_evt const *event)
 				case ESB_PACKET_CONTROL_TEST:
 					sweep_control_test_rcvd(rx_payload);
 				break;
+				case ESB_PACKET_DONGLE_CONNECT:
+				case ESB_PACKET_CONTROL_PAIR_REQEST:
+					// Handled in ack handler
+				break;
 				default:
 					#if !SWEEP_TEST
 						LOG_INF("Control packet %d received", rx_payload.data[1]);
 					#endif
 				}
+				break;
 			}
 
 			if(rx_payload.pipe != 0) {
@@ -454,7 +446,7 @@ int esb_initialize(bool tx, bool advertize)
 	}
 	int32_t ch;
 	esb_get_rf_channel(&ch);
-	LOG_INF("Initialized ESB, %sX mode ch %d", tx ? "T" : "R", ch);
+	LOG_INF("Initialized ESB, %sX mode ch %d, address %08X", tx ? "T" : "R", ch, *((uint32_t *) &base_addr_1[0]));
 
 	esb_initialized = true;
 	return 0;
@@ -590,7 +582,7 @@ void pick_channels() {
 
 static void esb_thread(void)
 {
-#if SWEEP_TEST
+#if SWEEP_TEST || RSSI_SCAN
 	k_msleep(5000);
 #endif
 	tdma_init();
@@ -601,6 +593,10 @@ static void esb_thread(void)
 	for (int i = 0; i < stored_trackers; i++)
 		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
+
+#if RSSI_SCAN
+	rssi_print_sweep();
+#endif
 
 	esb_set_addr();
 	esb_initialize(false, true);

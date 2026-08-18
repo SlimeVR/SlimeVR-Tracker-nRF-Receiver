@@ -49,11 +49,9 @@ void sweep_control_test_rcvd(struct esb_payload rx_payload) {
             if((bat & 0x80) > 0) {
                 sweep_lowest_bat = MIN(sweep_lowest_bat, bat & 0x7F);
             }
-            if(sweep_last_hwid == 0) {
+            if(sweep_last_hwid != hwid) {
                 LOG_INF("Found tracker HWID %012llX, battery %d", hwid, bat);
                 sweep_last_hwid = hwid;
-            } else if(sweep_last_hwid != hwid) {
-                sweeping_rx_errors++;
             }
             if(j > sweep_last_j) {
                 uint32_t gap = j - sweep_last_j - 1;

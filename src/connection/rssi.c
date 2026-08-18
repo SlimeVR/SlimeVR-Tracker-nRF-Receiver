@@ -1,5 +1,4 @@
 
-
 #include "globals.h"
 #include "system/system.h"
 #include "rssi.h"
@@ -10,7 +9,8 @@ LOG_MODULE_REGISTER(rssi, LOG_LEVEL_INF);
 
 #define RSSI_NO_SIGNAL              127    /**< Minimum value of RSSISAMPLE */
 #define WAIT_FOR( m ) do { while (!m); m = 0; } while(0)
-static uint32_t scan_repeat_times = 1000;
+static uint32_t scan_repeat_times = 1;
+static uint32_t sweeps_per_scan = 1000;
 
 uint8_t rssi_scan_channel(uint8_t channel_number)
 {
@@ -34,26 +34,42 @@ uint8_t rssi_scan_channel(uint8_t channel_number)
 uint8_t rssi_scan_channel_repeat(uint8_t channel_number)
 {
 	uint8_t sample1;
-	uint8_t sample2;
-	uint8_t sample3;
-	uint8_t max = RSSI_NO_SIGNAL;
+	uint8_t max = 0;
 	for (int i = 0; i <= scan_repeat_times; ++i) {
 		sample1 = rssi_scan_channel(channel_number);
-		sample2 = rssi_scan_channel(channel_number+1);
-		sample3 = rssi_scan_channel(channel_number-1);
-		// taking minimum since sample = -dBm.
-		max = MIN(sample3, MIN(sample2, MIN(sample1, max)));
-		k_msleep(1);
+		// taking lowest signal since sample = -dBm.
+		max = MAX(sample1, max);
 	}
 	return max;
 }
 
+struct ch_scan_result_t {
+	uint8_t min;
+	uint8_t max;
+	uint32_t sum;
+} ch_scan_result;
+
 void rssi_print_sweep() {
-	uint8_t channels[] = {ESB_RIMARY_ADVERTISEMENT_CHANNEL, ESB_SECONDARY_ADVERTISEMENT_CHANNEL, ESB_CHANNELS};
-	LOG_INF("Scanning through %d channels...", sizeof(channels));
-	for(int i = 0; i < sizeof(channels); ++i) {
-		uint8_t rssi = rssi_scan_channel_repeat(channels[i]);
-		LOG_INF("Channel: %2d, RSSI: %3d", channels[i], rssi);
-		k_msleep(300);
+	LOG_INF("Scanning through all channels...");
+	printk("SC	CH	RSSI AVG	RSSI MIN	RSSI MAX\n");
+	uint32_t scan = 0;
+	while(true) {
+		scan++;
+		printk("Scan %d\n", scan);
+		struct ch_scan_result_t scan_results[86 / 2];
+		for(int i = 0; i < 86 / 2; ++i) {
+			scan_results[i].min = 127;
+		}
+		for(int sweep = 0; sweep < sweeps_per_scan; ++sweep) {
+			for(int ch = 0; ch <= 84; ch += 2) {
+				uint8_t rssi = rssi_scan_channel_repeat(ch);
+				scan_results[ch / 2].min = MIN(scan_results[ch / 2].min, rssi);
+				scan_results[ch / 2].max = MAX(scan_results[ch / 2].max, rssi);
+				scan_results[ch / 2].sum += rssi;
+			}
+		}
+		for(int i = 0; i < 86 / 2; ++i) {
+			printk("%d	%d	%d	%d	%d\n", scan, i * 2, scan_results[i].sum / sweeps_per_scan, scan_results[i].min, scan_results[i].max);
+		}
 	}
 }
