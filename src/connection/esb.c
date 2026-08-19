@@ -214,7 +214,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		// packets_statistics[packet_n].rcv_window = current_window;
 		// packets_statistics[packet_n].timer = tdma_timer;
 		// LOG_INF("P %d T %d @ %d t (%d / %d w, %d s) (%d off) N %d", pdu_data[0], tracker_id, tdma_timer, current_window, tracker_window, current_slot, tdma_timer - tdma_get_slot_time(current_slot), packet_number);
-		if(current_slot < 24) {
+		if(current_slot < TDMA_DONGLE_SLOTS) {
 			LOG_WRN("Tracker %d broadcased in dongle's slot (%d)", tracker_id, current_slot);
 		} else {
 			if(tracker_window != current_window)
