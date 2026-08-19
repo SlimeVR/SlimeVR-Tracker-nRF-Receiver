@@ -616,7 +616,8 @@ static void esb_thread(void)
 	while(dongle_state == ACTIVE) {
 		if(write_stored_trackers) {
 			write_stored_trackers = false;
-			sys_write(STORED_ADDR_0, NULL, &stored_tracker_addr, sizeof(stored_tracker_addr));
+			for (int i = 0; i < stored_trackers; i++)
+				sys_write(STORED_ADDR_0 + i, NULL, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 			sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
 		}
 		// if(new_paired_address != 0) {
