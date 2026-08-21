@@ -31,7 +31,7 @@
 #include "esb.h"
 #include "nettests.h"
 
-#if RSSI_SCAN
+#if RSSI_SCAN || ED_SCAN
 #include "rssi.h"
 #endif
 
@@ -584,7 +584,7 @@ void pick_channels() {
 
 static void esb_thread(void)
 {
-#if SWEEP_TEST || RSSI_SCAN
+#if SWEEP_TEST || RSSI_SCAN || ED_SCAN
 	k_msleep(5000);
 #endif
 	tdma_init();
@@ -596,8 +596,8 @@ static void esb_thread(void)
 		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
 	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
 
-#if RSSI_SCAN
-	rssi_print_sweep();
+#if RSSI_SCAN || ED_SCAN
+	scan_print_sweep();
 #endif
 
 	esb_set_addr();
