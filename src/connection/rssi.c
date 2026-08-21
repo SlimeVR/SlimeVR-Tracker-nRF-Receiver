@@ -107,10 +107,11 @@ void scan_print_sweep() {
 #endif
 		for(int sweep = 0; sweep < sweeps_per_scan; ++sweep) {
 			for(int ch = 0; ch <= 84; ch += 2) {
+				uint8_t val = 0;
 #if RSSI_SCAN
-				uint8_t val = rssi_scan_channel_repeat(ch);
+				val = rssi_scan_channel_repeat(ch);
 #elif ED_SCAN
-				uint8_t val = ed_scan_channel_repeat(ch);
+				val = ed_scan_channel_repeat(ch);
 #endif
 				scan_results[ch / 2].min = MIN(scan_results[ch / 2].min, val);
 				scan_results[ch / 2].max = MAX(scan_results[ch / 2].max, val);
