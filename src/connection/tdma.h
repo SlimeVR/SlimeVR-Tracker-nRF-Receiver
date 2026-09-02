@@ -28,10 +28,10 @@
 #define TDMA_TIMER_MASK 0x7FFF
 #define TDMA_SLOT_SHIFT 5
 #define TDMA_SLOT_SIZE (1 << TDMA_SLOT_SHIFT)
-#define TDMA_SLOTS_COUNT (TDMA_TIMER_SIZE / TDMA_SLOT_SIZE)
+#define TDMA_SLOTS_COUNT ((TDMA_TIMER_SIZE / TDMA_SLOT_SIZE))
 #define TDMA_DONGLE_SLOTS 4
 #define MAX_TRACKERS 10
-#define TDMA_WINDOWS_PER_TRACKER (TDMA_SLOTS_COUNT - TDMA_DONGLE_SLOTS) / MAX_TRACKERS
+#define TDMA_WINDOWS_PER_TRACKER ((TDMA_SLOTS_COUNT - TDMA_DONGLE_SLOTS) / MAX_TRACKERS)
 #define TDMA_WRONG_WINDOW 255
 
 void tdma_init();
@@ -46,7 +46,7 @@ bool tdma_has_empty_windows();
 inline static uint16_t tdma_get_row(uint32_t slot) {
 	if(slot < TDMA_DONGLE_SLOTS)
 		return 0;
-	return (slot - TDMA_DONGLE_SLOTS) / TDMA_WINDOWS_PER_TRACKER;
+	return (slot - TDMA_DONGLE_SLOTS) / MAX_TRACKERS;
 }
 
 inline static uint32_t tdma_get_slot_time(uint32_t slot) {
@@ -54,5 +54,5 @@ inline static uint32_t tdma_get_slot_time(uint32_t slot) {
 }
 
 inline static uint32_t tdma_get_slot_from_window(uint16_t row, uint8_t window) {
-	return ((row * TDMA_WINDOWS_PER_TRACKER) + TDMA_DONGLE_SLOTS) + window;
+	return ((row * MAX_TRACKERS) + TDMA_DONGLE_SLOTS) + window;
 }
