@@ -47,6 +47,8 @@
 #define ESB_PACKET_CONTROL_DONGLE_STATUS 233
 #define ESB_PACKET_CONTROL_NO_WINDOWS 234 // Not used, reserved
 #define ESB_PACKET_CONTROL_WINDOW_INFO 235
+#define ESB_PACKET_CONTROL_PING 236
+#define ESB_PACKET_CONTROL_PONG 237
 
 #define ESB_PACKET_CONTROL_TEST 250
 
@@ -76,6 +78,13 @@ void esb_set_addr(void);
 int esb_get_frequency(void);
 uint8_t esb_add_pair(uint64_t addr);
 void esb_clear(void);
+void esb_ping(uint64_t receiver_addr, uint8_t channel);
+
+struct ping_request_t {
+	uint64_t target;
+	uint64_t time;
+	uint8_t channel;
+};
 
 enum dongle_state_t {
 	CHANNEL_SELECT,

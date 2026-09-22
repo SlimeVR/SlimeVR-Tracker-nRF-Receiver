@@ -60,6 +60,7 @@ static enum dongle_state_t dongle_state = CHANNEL_SELECT;
 static uint64_t channel_discovery_time = 0;
 static uint8_t currentESBChannel = ESB_RIMARY_ADVERTISEMENT_CHANNEL;
 static bool write_stored_trackers = false;
+static struct ping_request_t ping_request;
 uint8_t stored_trackers = 0;
 uint64_t stored_tracker_addr[MAX_TRACKERS] = {0};
 
@@ -98,9 +99,32 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 	#if SWEEP_TEST
 		return;
 	#endif
+	const uint8_t packet_id = pdu_data[1];
+	if(pipe_id == 0) {
+		switch(packet_id) {
+		case ESB_PACKET_CONTROL_PING:
+			if(data_length < 14) {
+				LOG_WRN("Short PING packet received: %d byes", data_length);
+				return;
+			}
+			uint64_t dongle_hwid = *((uint64_t *) &pdu_data[8]) & 0xFFFFFFFFFFFF;
+			uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR;
+			if(dongle_hwid != ((*addr) & 0xFFFFFFFFFFFF)) {
+				LOG_INF("Received PING packet for %012llX", dongle_hwid);
+				return; // Not our ping
+			}
+			memcpy(&ack_payload->data[8], &dongle_hwid, 6);
+			ack_payload->data[1] = ESB_PACKET_CONTROL_PONG;
+			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[2]) & 0xFFFFFFFFFFFF;
+			memcpy(&ack_payload->data[2], &tracker_hwid, 6);
+			LOG_INF("Ping packet received from %012llX", tracker_hwid);
+			ack_payload->length = 14;
+			*has_ack_payload = true;
+			return;
+		}
+	}
 	if(pipe_id != 0) {
 		const uint8_t packet_number = pdu_data[0]; // Sequence number
-		const uint8_t packet_id = pdu_data[1];
 		const uint8_t tracker_id = pdu_data[2];
 		ack_payload->data[0] = packet_number;
 		switch(packet_id) {
@@ -295,8 +319,24 @@ void event_handler(struct esb_evt const *event)
 				break;
 				case ESB_PACKET_DONGLE_CONNECT:
 				case ESB_PACKET_CONTROL_PAIR_REQEST:
+				case ESB_PACKET_CONTROL_PING:
 					// Handled in ack handler
 				break;
+				case ESB_PACKET_CONTROL_PONG:
+					if(rx_payload.length < 14) {
+						LOG_WRN("Short PONG packet received: %d byes", rx_payload.length);
+						return;
+					}
+					if(ping_request.target != 0) {
+						uint64_t sorce_hwid = *((uint64_t *) &rx_payload.data[2]) & 0xFFFFFFFFFFFF;
+						uint64_t target_hwid = *((uint64_t *) &rx_payload.data[8]) & 0xFFFFFFFFFFFF;
+						uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR;
+						if(ping_request.target == target_hwid && sorce_hwid == ((*addr) & 0xFFFFFFFFFFFF)) {
+							LOG_INF("PONG packet received from %012llX, RSSI %d, time %d ticks", sorce_hwid, rx_payload.rssi, (int) (k_uptime_ticks() - ping_request.time));
+							ping_request.target = 0;
+						}
+					}
+					return;
 				default:
 					#if !SWEEP_TEST
 						LOG_INF("Control packet %d received", rx_payload.data[1]);
@@ -337,6 +377,12 @@ void event_handler(struct esb_evt const *event)
 			}
 		}
 	}
+}
+
+void esb_ping(uint64_t receiver_addr, uint8_t channel) {
+	ping_request.target = receiver_addr;
+	ping_request.time = k_uptime_ticks();
+	ping_request.channel = channel;
 }
 
 int clocks_start(void)
@@ -534,6 +580,7 @@ bool is_dongle_window() {
 
 void prepare_dongle_sate_packet() {
 	tx_payload_dongle_sate.noack = true;
+	tx_payload_dongle_sate.pipe = 0;
 	tx_payload_dongle_sate.data[0] = 0; // Sequence is always 0
 	tx_payload_dongle_sate.data[1] = ESB_PACKET_CONTROL_DONGLE_STATUS;
 	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
@@ -548,6 +595,16 @@ void prepare_dongle_sate_packet() {
 	memcpy(&tx_payload_dongle_sate.data[10], &tdma_timer, sizeof(tdma_timer));
 	tx_payload_dongle_sate.data[14] = ESB_VERSION;
 	tx_payload_dongle_sate.data[15] = PROTOCOL_VERSION;
+}
+
+void prepare_ping_packet() {
+	tx_payload_dongle_sate.noack = false;
+	tx_payload_dongle_sate.data[0] = 0; // Sequence is always 0
+	tx_payload_dongle_sate.data[1] = ESB_PACKET_CONTROL_PING;
+	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR;
+	memcpy(&tx_payload_dongle_sate.data[2], addr, 6);
+	memcpy(&tx_payload_dongle_sate.data[8], &ping_request.target, 6);
+	tx_payload_dongle_sate.pipe = 0; // Send ping on broadcast address
 }
 
 void pick_channels() {
@@ -648,8 +705,25 @@ static void esb_thread(void)
 						k_sleep(K_TICKS(1));
 					k_sleep(K_TICKS(1 + (status_timing_shift++ % 3)));
 				}
-				
 				esb_deinitialize();
+				
+				if(ping_request.target != 0) {
+					prepare_ping_packet();
+					uint8_t ch = currentESBChannel;
+					currentESBChannel = ping_request.channel;
+					esb_initialize(true, false);
+
+					esb_write_payload(&tx_payload_dongle_sate);
+					esb_start_tx();
+					while(!esb_is_idle())
+						k_sleep(K_TICKS(1));
+					k_msleep(10);
+					ping_request.target = 0;
+
+					esb_deinitialize();
+					currentESBChannel = ch;
+				}
+
 				esb_initialize(false, false);
 				esb_start_rx();
 				if(!is_dongle_window()) {

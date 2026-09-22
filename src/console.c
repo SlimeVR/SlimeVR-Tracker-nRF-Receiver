@@ -204,6 +204,7 @@ static void console_thread(void)
 	const char command_list[] = "list";
 	const char command_reboot[] = "reboot";
 	const char command_add[] = "add";
+	const char command_ping[] = "ping";
 	const char command_pair[] = "pair";
 	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
@@ -251,6 +252,18 @@ static void console_thread(void)
 				esb_add_pair(addr);
 			else
 				printk("Invalid address\n");
+		}
+		else if (strcmp(argv[0], command_ping) == 0)
+		{
+			if (argc != 3)
+			{
+				printk("Invalid number of arguments\n");
+				continue;
+			}
+			uint64_t addr = parse_u64(argv[1], 16);
+			uint64_t channel = parse_u64(argv[2], 10);
+			printk("Sending PING to %012llx on channel %d\n", addr, (int) channel);
+			esb_ping(addr, channel);
 		}
 		else if (strcmp(line, command_list) == 0)
 		{
