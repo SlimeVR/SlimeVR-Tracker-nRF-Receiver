@@ -607,15 +607,30 @@ void prepare_ping_packet() {
 	tx_payload_dongle_sate.pipe = 0; // Send ping on broadcast address
 }
 
+void use_channel(uint8_t bundle_id) {
+	currentChannelBundle = bundle_id;
+	currentESBChannel = ESB_ALLOWED_CHANNEL_BUNDLES[bundle_id];
+	LOG_INF("Found an empty channel %d (id %d)", currentESBChannel, bundle_id);
+
+	esb_initialize(false, false);
+	dongle_state = ACTIVE;
+}
+
 void pick_channels() {
 	channel_discovery_time = k_uptime_get() + ESB_CHANNEL_DISCOVERY_TIME;
 	while(dongle_state == CHANNEL_SELECT && channel_discovery_time > k_uptime_get()) {
-		// Listem to advertisement packets and wait for our spot
+		// Listen to advertisement packets and wait for our spot
 		k_msleep(10);
 	}
 	if(dongle_state == CHANNEL_SELECT) {
+		esb_deinitialize();
+		ed_configure_radio();
+		LOG_INF("Scanning channel for occupancy..");
+		uint8_t found_channel = 255;
+		uint8_t channel_energy = 255;
 		// Channel picked successfully, we rockin'
 		for(int i = 0; i < sizeof(ESB_ALLOWED_CHANNEL_BUNDLES); ++i) {
+			int channel = ESB_ALLOWED_CHANNEL_BUNDLES[i];
 			bool occupied = false;
 			for(int j = 0; j < sizeof(occupied_channels); ++j) {
 				if(occupied_channels[j] == 0) {
@@ -627,14 +642,22 @@ void pick_channels() {
 				}
 			}
 			if(!occupied) {
-				currentChannelBundle = i;
-				currentESBChannel = ESB_ALLOWED_CHANNEL_BUNDLES[i];
-				LOG_INF("Found an empty channel %d", currentESBChannel);
-				esb_deinitialize();
-				esb_initialize(false, false);
-				dongle_state = ACTIVE;
-				return;
+				uint32_t energy = 0;
+				for(int it = 0; it < 100; ++it)
+					energy += ed_scan_channel_repeat(channel);
+				LOG_INF("Channel %d, energy %d", channel, energy);
+				if(energy == 0) {
+					use_channel(i);
+					return;
+				} else if(energy < channel_energy) {
+					channel_energy = energy;
+					found_channel = i;
+				}
 			}
+			k_msleep(1);
+		}
+		if(found_channel != 255) {
+			use_channel(found_channel);
 		}
 	}
 }

@@ -9,8 +9,8 @@
 LOG_MODULE_REGISTER(rssi, LOG_LEVEL_INF);
 
 #define WAIT_AND_RESET( m ) do { while (!m); m = 0; } while(0)
-static uint32_t scan_repeat_times = 1;
-static uint32_t sweeps_per_scan = 1000;
+static uint32_t scan_repeat_times = 10;
+static uint32_t sweeps_per_scan = 100;
 
 uint8_t rssi_scan_channel(uint8_t channel_number) {
 	uint8_t sample;
@@ -28,6 +28,16 @@ uint8_t rssi_scan_channel(uint8_t channel_number) {
 	WAIT_AND_RESET(NRF_RADIO->EVENTS_DISABLED);
 
 	return sample;
+}
+
+void ed_configure_radio() {
+	NRF_RADIO->MODE = RADIO_MODE_MODE_Ieee802154_250Kbit;
+	NRF_RADIO->POWER  = 1;
+	NRF_RADIO->SHORTS = RADIO_SHORTS_READY_START_Msk | RADIO_SHORTS_END_DISABLE_Msk;
+	NVIC_EnableIRQ(RADIO_IRQn);
+
+	NRF_CLOCK->TASKS_HFCLKSTART = 1;
+	while (NRF_CLOCK->EVENTS_HFCLKSTARTED == 0);
 }
 
 void sweep_configure_radio(void) {
@@ -85,7 +95,7 @@ struct ch_scan_result_t {
 void scan_print_sweep() {
 	sweep_configure_radio();
 #if RSSI_SCAN && ED_SCAN
-	LOG_ERR("RSSI scan can be performed with ED scan");
+	LOG_ERR("RSSI scan can't be performed with ED scan");
 	return;
 #endif
 	bool rssiTest = false;
@@ -108,14 +118,16 @@ void scan_print_sweep() {
 		for(int sweep = 0; sweep < sweeps_per_scan; ++sweep) {
 			for(int ch = 0; ch <= 84; ch += 2) {
 				uint8_t val = 0;
-#if RSSI_SCAN
-				val = rssi_scan_channel_repeat(ch);
-#elif ED_SCAN
-				val = ed_scan_channel_repeat(ch);
-#endif
-				scan_results[ch / 2].min = MIN(scan_results[ch / 2].min, val);
-				scan_results[ch / 2].max = MAX(scan_results[ch / 2].max, val);
-				scan_results[ch / 2].sum += val;
+				for(int ach = MAX(0, ch - 1); ach <= MIN(ch + 1, 84); ++ach) {
+	#if RSSI_SCAN
+					val = rssi_scan_channel_repeat(ach);
+	#elif ED_SCAN
+					val = ed_scan_channel_repeat(ach);
+	#endif
+					scan_results[ch / 2].min = MIN(scan_results[ch / 2].min, val);
+					scan_results[ch / 2].max = MAX(scan_results[ch / 2].max, val);
+					scan_results[ch / 2].sum += val;
+				}
 			}
 			k_msleep(1);
 #if PRINT_PROGRESS
@@ -127,10 +139,10 @@ void scan_print_sweep() {
 #endif
 		}
 		for(int i = 0; i < 86 / 2; ++i) {
-			uint8_t avg = (uint8_t) (scan_results[i].sum / sweeps_per_scan);
+			uint8_t avg = (uint8_t) (scan_results[i].sum / sweeps_per_scan / 3);
 			printk("%d\t%d\t%d\t%d\t%d\n", scan, i * 2, avg, scan_results[i].min, scan_results[i].max);
 			k_msleep(5);
 		}
-		k_msleep(100);
+		k_msleep(1000);
 	}
 }
