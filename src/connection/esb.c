@@ -643,8 +643,12 @@ void pick_channels() {
 			}
 			if(!occupied) {
 				uint32_t energy = 0;
-				for(int it = 0; it < 100; ++it)
-					energy += ed_scan_channel_repeat(channel);
+				for(int it = 0; it < 100; ++it) {
+				 	energy += ed_scan_channel_repeat(channel);
+					if(energy > 0)
+						break;
+					k_usleep(1);
+				}
 				LOG_INF("Channel %d, energy %d", channel, energy);
 				if(energy == 0) {
 					use_channel(i);

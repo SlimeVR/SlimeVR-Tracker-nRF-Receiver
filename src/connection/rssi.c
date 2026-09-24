@@ -9,7 +9,7 @@
 LOG_MODULE_REGISTER(rssi, LOG_LEVEL_INF);
 
 #define WAIT_AND_RESET( m ) do { while (!m); m = 0; } while(0)
-static uint32_t scan_repeat_times = 10;
+static uint32_t scan_repeat_times = 100;
 static uint32_t sweeps_per_scan = 100;
 
 uint8_t rssi_scan_channel(uint8_t channel_number) {
