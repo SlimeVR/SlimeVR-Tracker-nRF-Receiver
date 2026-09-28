@@ -360,6 +360,7 @@ void event_handler(struct esb_evt const *event)
 						rx_payload.data[8] = statistics[tracker_id].windows_missed;
 						// Received from the tracker
 						rx_payload.data[13] = statistics[tracker_id].repeat_packets;
+						rx_payload.data[14] = statistics[tracker_id].max_gap;
 						statistics[tracker_id].packets_lost = 0;
 						statistics[tracker_id].packets_received = 0;
 						statistics[tracker_id].windows_hit = 0;
