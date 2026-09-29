@@ -1,8 +1,8 @@
 # Copyright (c) 2024 Nordic Semiconductor ASA
 # SPDX-License-Identifier: Apache-2.0
 
-identifier: butterfly_dg1
-name: butterfly_dg1
+identifier: butterfly_dg1_uf2
+name: butterfly_dg1_uf2
 vendor: slimevr
 type: mcu
 arch: arm

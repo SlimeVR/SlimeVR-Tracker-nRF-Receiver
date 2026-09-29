@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 board:
-  name: butterfly_dg1
+  name: butterfly_dg1_uf2
   vendor: slimevr
   socs:
     - name: nrf52833

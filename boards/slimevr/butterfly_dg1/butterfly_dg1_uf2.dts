@@ -6,8 +6,8 @@
 #include <dt-bindings/led/led.h>
 
 / {
-	model = "butterfly_dg1";
-	compatible = "butterfly_dg1";
+	model = "butterfly_dg1_uf2";
+	compatible = "butterfly_dg1_uf2";
 
 	aliases {
 		sw0 = &button0;

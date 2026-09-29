@@ -693,6 +693,8 @@ static void esb_thread(void)
 	esb_start_rx();
 	pick_channels();
 
+	set_led(SYS_LED_PATTERN_ACTIVE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
+
 	bool was_dongle_window = false;
 	uint8_t status_timing_shift = 0;
 	uint32_t last_slot = 0;
