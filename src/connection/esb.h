@@ -20,11 +20,11 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#ifndef SLIMENRF_ESB
-#define SLIMENRF_ESB
+#pragma once
 
 #include <esb.h>
 #include "tdma.h"
+#include <zephyr/kernel.h>
 
 #define ESB_VERSION 2
 #define PROTOCOL_VERSION 2
@@ -38,9 +38,12 @@
 #define ESB_PACKET_DONGLE_CONNECT 201
 #define ESB_PACKET_DONGLE_CONNECT_REPLY 202
 #define ESB_PACKET_DONGLE_RECONNECT 203
-#define ESB_PACKET_SERVER_HELLO 204
-#define ESB_PACKET_DONGLE_INFO 205
-#define ESB_PACKET_CLEAR_PAIRING 206
+#define SERVER_PACKET_SERVER_HELLO 204
+#define SERVER_PACKET_DONGLE_INFO 205
+#define SERVER_PACKET_CLEAR_PAIRING 206
+#define SERVER_PACKET_SEND_TRACKERS_LIST 207
+#define SERVER_PACKET_TRACKERS_LIST 208
+#define SERVER_PACKET_CONFIG 209
 
 #define ESB_PACKET_CONTROL_PAIR_REQEST 231
 #define ESB_PACKET_CONTROL_PAIR_RESPONSE 232
@@ -74,8 +77,16 @@
 
 #define WRONG_TRACKER_ID 255
 
+#define ESB_TRACKER_QUEUE_SIZE 5
+#define ESB_TRACKER_PACKET_MAX_LENGTH 32
+typedef struct {
+	uint8_t length;
+	uint8_t data[ESB_TRACKER_PACKET_MAX_LENGTH];
+} tracker_packet_t;
+
 extern uint8_t stored_trackers;
 extern uint64_t stored_tracker_addr[MAX_TRACKERS];
+extern struct k_msgq tracker_queues[MAX_TRACKERS];
 
 void event_handler(struct esb_evt const *event);
 void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
@@ -87,6 +98,7 @@ int esb_get_frequency(void);
 uint8_t esb_add_pair(uint64_t addr);
 void esb_clear(void);
 void esb_ping(uint64_t receiver_addr, uint8_t channel);
+void esb_tracker_message(uint8_t * data, int length);
 
 struct ping_request_t {
 	uint64_t target;
@@ -120,4 +132,3 @@ enum dongle_state_t {
 #define ESB_CHANNEL_DISCOVERY_TIME 2200
 #define ESB_CHANNEL_DISCOVERY_ADDITION 1100
 
-#endif

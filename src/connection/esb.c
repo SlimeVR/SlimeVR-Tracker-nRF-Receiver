@@ -63,6 +63,9 @@ static bool write_stored_trackers = false;
 static struct ping_request_t ping_request;
 uint8_t stored_trackers = 0;
 uint64_t stored_tracker_addr[MAX_TRACKERS] = {0};
+struct k_msgq tracker_queues[MAX_TRACKERS];
+static char __aligned(4) queue_buffers[MAX_TRACKERS][ESB_TRACKER_QUEUE_SIZE * sizeof(tracker_packet_t)];
+uint8_t last_rssi[MAX_TRACKERS] = {0};
 
 struct con_stat {
 	uint8_t packets_received;
@@ -193,10 +196,21 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		}
 		uint32_t current_slot = tdma_get_slot(tdma_timer);
 		uint8_t current_window = tdma_get_window(current_slot);
+		bool sending_data = false;
 		if(!tdma_is_dongle_window(current_slot) && current_window == tracker_window) {
 			// Tracker sent data at the correct time, we can send data to it if we have
-			// TODO : Send data if we have for this tracker
-		} // else {
+			if (k_msgq_num_used_get(&tracker_queues[tracker_id]) > 0)
+			{
+				tracker_packet_t packet;
+				k_msgq_get(&tracker_queues[tracker_id], &packet, K_NO_WAIT);
+				memcpy(ack_payload->data, packet.data, packet.length);
+				ack_payload->length = packet.length;
+				*has_ack_payload = true;
+				sending_data = true;
+				LOG_INF("Sent packet 0x%02X attached to ACK for tracker %d", ack_payload->data[1], tracker_id);
+			}
+		}
+		if(!sending_data) {
 			// Send Window Info (5) if we don't have anything better
 			// TODO : We should send one at least once every 20-100 packets to prevent timer drift
 			ack_payload->data[1] = ESB_PACKET_CONTROL_WINDOW_INFO; // Window Info (235)
@@ -205,7 +219,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			ack_payload->data[7] = 0; // For future: next channel
 			ack_payload->length = 8;
 			*has_ack_payload = true;
-		// }
+		}
 
 		struct con_stat* stat = &statistics[tracker_id];
 
@@ -342,16 +356,18 @@ void event_handler(struct esb_evt const *event)
 						LOG_INF("Control packet %d received", rx_payload.data[1]);
 					#endif
 				}
-				break;
+				continue;
 			}
 
 			if(rx_payload.pipe != 0) {
-				if (rx_payload.length >= 17) {
-					uint8_t tracker_id = rx_payload.data[2];
-					if (tracker_id >= stored_trackers) // not a stored tracker
-						continue;
-					if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
-						break;
+				uint8_t tracker_id = rx_payload.data[2];
+				if (tracker_id >= stored_trackers) // not a stored tracker
+					continue;
+				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
+					break;
+				last_rssi[tracker_id] = rx_payload.rssi;
+				// Legacy packets
+				if (rx_payload.length >= 17 && rx_payload.data[1] < 8) {
 					if(rx_payload.data[1] == 3) { // status
 						// Fill in packet lost statistics in status packet
 						rx_payload.data[5] = statistics[tracker_id].packets_received;
@@ -369,15 +385,28 @@ void event_handler(struct esb_evt const *event)
 						statistics[tracker_id].max_gap = 0;
 						statistics[tracker_id].max_rotation_gap = 0;
 					}
-					hid_write_packet_n(rx_payload.data + 1, rx_payload.rssi, 16); // write to hid endpoint
-					break;
+					if(rx_payload.data[1] != 1 && rx_payload.data[1] != 4)
+						rx_payload.data[16] = rx_payload.rssi;
+					hid_write_packet_n(rx_payload.data + 1, 16); // write to hid endpoint
 				} else {
-					LOG_ERR("Wrong packet length: %d", rx_payload.length);
-					break;
+					if(rx_payload.data[1] == 8)
+						rx_payload.data[3] = rx_payload.rssi;
+					hid_write_packet_n(rx_payload.data, rx_payload.length); // write to hid endpoint
 				}
 			}
 		}
 	}
+}
+
+void esb_tracker_message(uint8_t * data, int length) {
+	if(length < 3)
+		return;
+	uint8_t tracker_id = data[2];
+	LOG_INF("Received data for Tracker ID %d", tracker_id);
+	tracker_packet_t message;
+	message.length = length;
+	memcpy(&message.data, data, length);
+	k_msgq_put(&tracker_queues[tracker_id], &message, K_NO_WAIT);
 }
 
 void esb_ping(uint64_t receiver_addr, uint8_t channel) {
@@ -672,6 +701,10 @@ static void esb_thread(void)
 #if SWEEP_TEST || RSSI_SCAN || ED_SCAN
 	k_msleep(5000);
 #endif
+	for (int i = 0; i < MAX_TRACKERS; i++)
+    {
+        k_msgq_init(&tracker_queues[i], queue_buffers[i], sizeof(tracker_packet_t), ESB_TRACKER_QUEUE_SIZE);
+    }
 	tdma_init();
 
 	clocks_start();
