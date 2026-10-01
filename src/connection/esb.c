@@ -27,7 +27,7 @@
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
 #include <zephyr/sys/crc.h>
 #include "rssi.h"
-
+#include "messages.h"
 #include "esb.h"
 #include "nettests.h"
 
@@ -402,11 +402,23 @@ void esb_tracker_message(uint8_t * data, int length) {
 	if(length < 3)
 		return;
 	uint8_t tracker_id = data[2];
+	if(tracker_id == 201) {
+		// Special case when the tracker is the dongle
+		hid_dongle_message(data, length);
+		return;
+	}
 	LOG_INF("Received data for Tracker ID %d", tracker_id);
 	tracker_packet_t message;
 	message.length = length;
 	memcpy(&message.data, data, length);
-	k_msgq_put(&tracker_queues[tracker_id], &message, K_NO_WAIT);
+	if(tracker_id == 255) { // Send to all connected trackers
+		for(int i = 0; i < MAX_TRACKERS; ++i) {
+			if(tdma_get_tracker_window(i) != TDMA_WRONG_WINDOW)
+				k_msgq_put(&tracker_queues[i], &message, K_NO_WAIT);
+		}
+	} else if(tdma_get_tracker_window(tracker_id) != TDMA_WRONG_WINDOW) {
+		k_msgq_put(&tracker_queues[tracker_id], &message, K_NO_WAIT);
+	}
 }
 
 void esb_ping(uint64_t receiver_addr, uint8_t channel) {

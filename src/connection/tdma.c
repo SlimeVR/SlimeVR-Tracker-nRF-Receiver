@@ -55,10 +55,14 @@ bool tdma_is_dongle_window(uint32_t slot) {
 }
 
 uint8_t tdma_get_tracker_window(uint8_t tracker_id) {
+    if(tracker_id >= MAX_TRACKERS)
+        return TDMA_WRONG_WINDOW;
     return tdma_tracker_to_window[tracker_id];
 }
 
 uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
+    if(tracker_id >= MAX_TRACKERS)
+        return TDMA_WRONG_WINDOW;
     uint8_t window = tdma_tracker_to_window[tracker_id];
     if(window == TDMA_WRONG_WINDOW) {
         // No window is allocated to the tracker, try to find an empty one and allocate
