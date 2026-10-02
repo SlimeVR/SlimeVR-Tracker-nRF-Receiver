@@ -21,6 +21,8 @@
 	THE SOFTWARE.
 */
 #include "globals.h"
+#include "connection/esb.h"
+#include "connection/messages.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/usb/usb_device.h>
@@ -29,19 +31,14 @@
 static struct k_work report_send;
 static struct k_work report_read;
 
-static struct tracker_report {
-	uint8_t data[16];
-} __packed report = {
-	.data = {0}
-};;
+static struct report_t {
+	uint8_t length;
+	uint8_t data[64];
+};
 
-struct tracker_report reports[MAX_TRACKERS];
-atomic_t report_write_index = 0;
-atomic_t report_read_index = 0;
-// read_index == write_index -> empty fifo
-// (write_index + 1) % MAX_TRACKERS == read_index -> full fifo
+struct k_msgq reports;
+K_MSGQ_DEFINE(reports, sizeof(struct report_t), MAX_TRACKERS, 1);
 
-static bool configured;
 static const struct device *hdev;
 static ATOMIC_DEFINE(hid_ep_in_busy, 1);
 static ATOMIC_DEFINE(hid_ep_out_busy, 1);
@@ -51,7 +48,7 @@ static ATOMIC_DEFINE(hid_ep_out_busy, 1);
 #define POLL_PERIOD		K_MSEC(1) // streaming reports // TODO: could it be shorter/reduce latency?
 #define HID_EP_REPORT_COUNT 4
 
-struct tracker_report ep_report_buffer[HID_EP_REPORT_COUNT];
+uint8_t report_buffer[64];
 uint8_t ep_read_buffer[256]; // TODO: no struct // TODO: is possible to read >64 bytes, e.g. a delayed read?
 
 LOG_MODULE_REGISTER(hid_event, LOG_LEVEL_INF);
@@ -81,25 +78,6 @@ uint16_t sent_device_addr = 0;
 bool usb_enabled = false;
 int64_t last_registration_sent = 0;
 
-//|type    |description
-//|TX   255|receiver packet 0, associate id and tracker address
-//|TX   254|device list hash, round trip ping
-//|TX   253|receiver status (TODO: send number of pairing requests found?)
-//|TX   252|device pairing request, id is the id of the pairing request in case of multiple, not final tracker id (TODO: these can timeout if not sent often? can server automatically accept if the address was known?)
-//|RX   255|round trip response
-//|RX   254|command (TODO: include parameters?)
-
-//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
-//|type    |data                                                                                                                                  |
-//|TX   255|id      |device_addr                                          |resv-------------------------------------------------------------------|
-//|TX   254|stored  |crc                                |latency          |resv-------------------------------------------------------------------|
-//|TX   253|status  |resv-------------------------------------------------|resv-------------------------------------------------------------------|
-//|TX   252|id      |device_addr                                          |resv-------------------------------------------------------------------|
-//|RX   255|resv----------------------------------------------------------|resv-------------------------------------------------------------------|
-//|RX   254|command |resv-------------------------------------------------|resv-------------------------------------------------------------------|
-
-// TODO: implement this
-
 static void packet_device_addr(uint8_t *report, uint16_t id) // associate id and tracker address
 {
 	report[0] = 255; // receiver packet 0
@@ -108,50 +86,49 @@ static void packet_device_addr(uint8_t *report, uint16_t id) // associate id and
 	memset(&report[8], 0, 8); // last 8 bytes unused for now
 }
 
-static uint32_t dropped_reports = 0;
-static uint16_t max_dropped_reports = 0;
-
 static void send_report(struct k_work *work)
 {
 	if (!usb_enabled) return;
 	if (!stored_trackers) return;
 
-	// Get current FIFO status atomically
-	size_t write_idx = (size_t)atomic_get(&report_write_index);
-	size_t read_idx = (size_t)atomic_get(&report_read_index);
+	bool have_reports = k_msgq_num_used_get(&reports) > 0;
 
-	if (write_idx == read_idx && k_uptime_get() - 100 < last_registration_sent) {
+	if (!have_reports && k_uptime_get() - 100 < last_registration_sent) {
 		return; // send registrations only every 100ms
 	}
 
-	int ret, wrote;
-
-	last_registration_sent = k_uptime_get();
-
 	if (!atomic_test_and_set_bit(hid_ep_in_busy, HID_EP_BUSY_FLAG)) {
-		// Calculate how many reports we have available
-		int available_reports = write_idx - read_idx;
-		if (available_reports < 0) available_reports += MAX_TRACKERS;
-		size_t reports_to_send = (size_t)((available_reports > HID_EP_REPORT_COUNT) ? HID_EP_REPORT_COUNT : available_reports);
-
-		int epind;
-		// Copy existing data to buffer
-		for (epind = 0; epind < reports_to_send; epind++) {
-			ep_report_buffer[epind] = reports[read_idx];
-			read_idx++;
-			if (read_idx == MAX_TRACKERS) read_idx = 0;
-			atomic_set(&report_read_index, read_idx);
+		last_registration_sent = k_uptime_get();
+		int ret, wrote;
+		int buffer_index = 0;
+		struct report_t report;
+		while(true) {
+			int ret = k_msgq_peek(&reports, &report);
+			if(ret < 0)
+				break;
+			int buffer_remainder = sizeof(report_buffer) - buffer_index;
+			if(buffer_remainder >= report.length) {
+				ret = k_msgq_get(&reports, &report, K_NO_WAIT);
+				if(ret < 0)
+					break;
+				memcpy(report_buffer, &report.data, report.length);
+				buffer_index += report.length;
+			} else {
+				break;
+			}
 		}
-
 		// Pad remaining report slots with device addr
-		for (; epind < HID_EP_REPORT_COUNT; epind++) {
+		// TODO : Not necessarry on Protocol 3
+		// TODO : Pad with RSSI packets
+		while(sizeof(report_buffer) - buffer_index >= 16) {
 			if (stored_trackers > 0) {
-				packet_device_addr(ep_report_buffer[epind].data, sent_device_addr);
+				packet_device_addr(&report_buffer[buffer_index], sent_device_addr);
 				sent_device_addr = (sent_device_addr + 1) % stored_trackers;
+				buffer_index += 16;
 			}
 		}
 
-		ret = hid_int_ep_write(hdev, (uint8_t *)ep_report_buffer, sizeof(report) * HID_EP_REPORT_COUNT, &wrote);
+		ret = hid_int_ep_write(hdev, report_buffer, sizeof(report_buffer), &wrote);
 
 		if (ret != 0) {
 			/*
@@ -167,19 +144,26 @@ static void send_report(struct k_work *work)
 	}
 }
 
-#define DROPPED_REPORT_LOG_INTERVAL 5000
-
-static void hid_dropped_reports_logging(void)
-{
-	while (1) {
-		if (dropped_reports) LOG_INF("Dropped reports: %u (max: %u)", dropped_reports, max_dropped_reports);
-		dropped_reports = 0;
-		max_dropped_reports = 0;
-		k_msleep(DROPPED_REPORT_LOG_INTERVAL);
+void hid_report_received(uint8_t * report_buffer, int length) {
+	
+	for (int offset = 0; offset < length; offset += 16)
+	{
+		uint8_t *packet = report_buffer + offset;
+		uint8_t packet_id = packet[1];
+		if(packet_id == 0)
+			continue;
+		// TODO Lengths???
+		// Message is for tracker
+		if ((packet_id >= 1) & (packet_id <= 200))
+		{
+			esb_tracker_message(packet, 16);
+		}
+		else
+		{
+			hid_dongle_message(packet, 16);
+		}
 	}
 }
-
-K_THREAD_DEFINE(hid_dropped_reports_logging_thread, 256, hid_dropped_reports_logging, NULL, NULL, NULL, 6, 0, 0);
 
 static void read_report(struct k_work *work)
 {
@@ -194,17 +178,7 @@ static void read_report(struct k_work *work)
 			LOG_ERR("hid_int_ep_read: %d", ret);
 		} else {
 			LOG_INF("hid_int_ep_read: %d", read);
-			// do something here
-			LOG_INF("%016llX%016llX%016llX%016llX%016llX%016llX%016llX%016llX",
-				*(uint64_t *)(ep_read_buffer + 56),
-				*(uint64_t *)(ep_read_buffer + 48),
-				*(uint64_t *)(ep_read_buffer + 40),
-				*(uint64_t *)(ep_read_buffer + 32),
-				*(uint64_t *)(ep_read_buffer + 24),
-				*(uint64_t *)(ep_read_buffer + 16),
-				*(uint64_t *)(ep_read_buffer + 8),
-				*(uint64_t *)ep_read_buffer
-			);
+			hid_report_received(ep_read_buffer, read);
 		}
 	} else { // busy with what
 		//LOG_DBG("HID OUT endpoint busy");
@@ -218,6 +192,11 @@ static void int_in_ready_cb(const struct device *dev)
 		LOG_WRN("IN endpoint callback without preceding buffer write");
 	}
 	// TODO: can probably immediately write report from here
+}
+
+void hid_int_in_ready(void)
+{
+	int_in_ready_cb(hdev);
 }
 
 static void int_out_ready_cb(const struct device *dev)
@@ -265,32 +244,6 @@ static const struct hid_ops ops = {
 	.protocol_change = protocol_cb,
 };
 
-static void status_cb(enum usb_dc_status_code status, const uint8_t *param)
-{
-	switch (status) {
-	case USB_DC_RESET:
-		configured = false;
-		break;
-	case USB_DC_CONFIGURED:
-		int configurationIndex = *param;
-		if(configurationIndex == 0) {
-			// from usb_device.c: A configuration index of 0 unconfigures the device.
-			configured = false;
-		} else {
-			if (!configured) {
-				int_in_ready_cb(hdev);
-				configured = true;
-			}
-		}
-		break;
-	case USB_DC_SOF:
-		break;
-	default:
-		LOG_DBG("status %u unhandled", status);
-		break;
-	}
-}
-
 static int composite_pre_init()
 {
 	hdev = device_get_binding("HID_0");
@@ -319,73 +272,18 @@ static int composite_pre_init()
 
 SYS_INIT(composite_pre_init, APPLICATION, CONFIG_KERNEL_INIT_PRIORITY_DEVICE);
 
-void usb_init_thread(void)
+void hid_init(void)
 {
-	usb_enable(status_cb);
 	k_work_init(&report_send, send_report);
 	k_work_init(&report_read, read_report);
 	usb_enabled = true;
 }
 
-K_THREAD_DEFINE(usb_init_thread_id, 256, usb_init_thread, NULL, NULL, NULL, 6, 0, 0);
-
-//|type    |description
-//|RX     0|device info ("info")
-//|RX     1|full precision quat and accel
-//|RX     2|reduced precision quat and accel with battery, temp, and rssi ("info")
-//|RX     3|status ("status")
-//|RX     4|full precision quat and magnetometer
-//|RX     5|runtime ("status2")
-//|RX     6|reduced precision quat and accel with button and sleep time ("info2")
-//|RX     7|button and sleep time ("info2")
-
-//|b0      |b1      |b2      |b3      |b4      |b5      |b6      |b7      |b8      |b9      |b10     |b11     |b12     |b13     |b14     |b15     |
-//|type    |id      |packet data                                                                                                                  |
-//|RX     0|id      |batt    |batt_v  |temp    |brd_id  |mcu_id  |resv----|imu_id  |mag_id  |fw_date          |major   |minor   |patch   |rssi    |
-//|RX     1|id      |q0               |q1               |q2               |q3               |a0               |a1               |a2               |
-//|RX     2|id      |batt    |batt_v  |temp    |q_buf                              |a0               |a1               |a2               |rssi    |
-//|RX     3|id      |svr_stat|status  |resv----------------------------------------------------------------------------------------------|rssi    |
-//|RX     4|id      |q0               |q1               |q2               |q3               |m0               |m1               |m2               |
-//|RX     5|id      |runtime                                                                |resv----------------------------------------|rssi    |
-//|RX     6|id      |button  |sleeptime        |resv-------------------------------------------------------------------------------------|rssi    |
-//|RX     7|id      |button  |sleeptime        |q_buf                              |a0               |a1               |a2               |rssi    |
-
-// runtime is in microseconds (overkill), sleeptime is in milliseconds (overkill but less)
-
-void hid_write_packet_n(uint8_t *data, uint8_t rssi)
+void hid_write_packet_n(uint8_t *data, size_t size)
 {
-	memcpy(&report.data, data, sizeof(report)); // all data can be passed through
-	if (data[0] != 1 && data[0] != 4) // packet 1 and 4 are full precision quat and accel/mag, no room for rssi
-		report.data[15] = rssi;
-	// Get current FIFO status atomically
-	size_t write_idx = (size_t)atomic_get(&report_write_index);
-	size_t read_idx = (size_t)atomic_get(&report_read_index);
-
-	// Try to replace existing entry for the same tracker first
-	if (write_idx != read_idx) {
-		// Start from read point + 1 to avoid hitting the entry being used
-		size_t check_index = read_idx + 1;
-		if (check_index == MAX_TRACKERS) check_index = 0;
-
-		while (check_index != write_idx) {
-			if (reports[check_index].data[1] == data[1]) {
-				// Replace existing entry
-				reports[check_index] = report;
-				return;
-			}
-			check_index = check_index + 1;
-			if (check_index == MAX_TRACKERS) check_index = 0;
-		}
-	}
-	if (write_idx + 1 == read_idx || (write_idx == MAX_TRACKERS-1 && read_idx == 0)) { // overflow
-		dropped_reports ++;
-		return;
-	}
-	// Write new packet into FIFO
-	reports[write_idx] = report;
-
-	// Update write index atomically
-	write_idx ++;
-	if (write_idx == MAX_TRACKERS) write_idx = 0;
-	atomic_set(&report_write_index, write_idx);
+	struct report_t report;
+	report.length = size;
+	memcpy(&report.data, data, size);
+	
+	k_msgq_put(&reports, &report, K_NO_WAIT);
 }
