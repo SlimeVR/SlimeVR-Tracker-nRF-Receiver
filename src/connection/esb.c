@@ -54,11 +54,13 @@ static const uint8_t ESB_ALLOWED_CHANNEL_BUNDLES[] = {ESB_CHANNELS};
 static uint8_t occupied_channels[sizeof(ESB_ALLOWED_CHANNEL_BUNDLES)] = {0};
 
 static bool esb_initialized = false;
+static bool esb_tx = false;
+static bool esb_advertize = false;
+static uint8_t esb_channel = ESB_RIMARY_ADVERTISEMENT_CHANNEL;
 static bool accepts_pairing = true;
 static uint8_t currentChannelBundle = 0;
 static enum dongle_state_t dongle_state = CHANNEL_SELECT;
 static uint64_t channel_discovery_time = 0;
-static uint8_t currentESBChannel = ESB_RIMARY_ADVERTISEMENT_CHANNEL;
 static bool write_stored_trackers = false;
 static struct ping_request_t ping_request;
 uint8_t stored_trackers = 0;
@@ -473,13 +475,27 @@ void esb_deinitialize() {
 	if(!esb_initialized)
 		return;
 	esb_initialized = false;
+	k_msleep(1); // wait for pending transmissions
+	esb_stop_rx();
 	esb_disable();
 }
 
 int esb_initialize(bool tx, bool advertize)
 {
-	if (esb_initialized)
-		LOG_WRN("ESB already initialized");
+	if(esb_initialized) {
+		if(tx == esb_tx && advertize == esb_advertize) {
+			if(advertize)
+				return 0; // Don't switch channel in advertize mode
+			uint32_t current_channel = 0;
+			esb_get_rf_channel(&current_channel);
+			if(esb_channel == current_channel)
+				return 0;		
+		}
+		esb_deinitialize();
+	}
+	esb_tx = tx;
+	esb_advertize = advertize;
+	esb_initialized = true;
 	int err;
 
 	struct esb_config config = ESB_DEFAULT_CONFIG;
@@ -524,12 +540,14 @@ int esb_initialize(bool tx, bool advertize)
 		esb_set_base_address_0(base_addr_0);
 		esb_set_base_address_1(base_addr_1);
 		esb_set_prefixes(addr_prefix, ARRAY_SIZE(addr_prefix));
-		esb_set_rf_channel(advertize ? ESB_RIMARY_ADVERTISEMENT_CHANNEL : currentESBChannel);
+		esb_set_rf_channel(advertize ? ESB_RIMARY_ADVERTISEMENT_CHANNEL : esb_channel);
 	}
 	else
 	{
+		k_msleep(2000);
 		LOG_ERR("ESB initialization failed: %d", err);
 		set_status(SYS_STATUS_CONNECTION_ERROR, true);
+		esb_initialized = false;
 		return err;
 	}
 	int32_t ch;
@@ -651,7 +669,7 @@ void prepare_ping_packet() {
 
 void use_channel(uint8_t bundle_id) {
 	currentChannelBundle = bundle_id;
-	currentESBChannel = ESB_ALLOWED_CHANNEL_BUNDLES[bundle_id];
+	esb_channel = ESB_ALLOWED_CHANNEL_BUNDLES[bundle_id];
 	LOG_INF("Found an empty channel %d (id %d)", currentESBChannel, bundle_id);
 
 	esb_initialize(false, false);
@@ -784,8 +802,8 @@ static void esb_thread(void)
 				
 				if(ping_request.target != 0) {
 					prepare_ping_packet();
-					uint8_t ch = currentESBChannel;
-					currentESBChannel = ping_request.channel;
+					uint8_t ch = esb_channel;
+					esb_channel = ping_request.channel;
 					esb_initialize(true, false);
 
 					esb_write_payload(&tx_payload_dongle_sate);
@@ -796,7 +814,7 @@ static void esb_thread(void)
 					ping_request.target = 0;
 
 					esb_deinitialize();
-					currentESBChannel = ch;
+					esb_channel = ch;
 				}
 
 				esb_initialize(false, false);
