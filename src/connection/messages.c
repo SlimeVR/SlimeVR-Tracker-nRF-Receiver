@@ -42,7 +42,7 @@ void send_dongle_info() {
     basic_info.dongle_class = 1;
     basic_info.dongle_hardware_type = HARDWARE_BUTTERFLY_DONGLE;
     basic_info.dongle_hardware_revision = 1;
-    basic_info.protocol_version = P_VERSION_TRANSITIONAL;
+    basic_info.protocol_version = P_VERSION_LEGACY;
     memcpy(dongle_info.data_array, &basic_info, sizeof(packet_dongle_info_basic_t));
     hid_write_packet_n((uint8_t *) &dongle_info, sizeof(packet_dongle_into_t));
     // TODO Other info
@@ -61,8 +61,8 @@ void process_server_hello(uint8_t * data, int length) {
     LOG_INF("Server hello: protocol %d, server type: %d, flags: %d, time %d", server_hello.protocol_version, server_hello.server_type, data[4], server_hello.server_time);
     if(server_hello.flag_send_all || !sent_data) {
         sent_data = true;
-        send_dongle_info();
-        send_trackers_list();
+        //send_dongle_info();
+        //send_trackers_list();
     }
 }
 
