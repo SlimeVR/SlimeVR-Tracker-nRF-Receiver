@@ -122,6 +122,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			}
 #endif
 			memcpy(&ack_payload->data[8], &dongle_hwid, 6);
+			ack_payload->data[0] = packet_number;
 			ack_payload->data[1] = ESB_PACKET_CONTROL_PONG;
 			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[2]) & 0xFFFFFFFFFFFF;
 			memcpy(&ack_payload->data[2], &tracker_hwid, 6);
@@ -761,7 +762,7 @@ static void esb_thread(void)
 	sweep_run();
 #endif
 	esb_start_rx();
-	
+
 #if CONFIG_BTF_DUT
 	esb_channel = 50;
 	esb_initialize(false, false);
@@ -798,10 +799,11 @@ static void esb_thread(void)
 #endif
 		last_slot = current_slot;
 #if CONFIG_BTF_DUT
-		LOG_INF("[DUT] Packets received: %d, packets lost: %d, loss: %d%%", statistics[0].packets_received, statistics[0].packets_lost,
+		LOG_INF("[DUT] Packets received: %d, packets lost: %d, repeats: %d. Loss: %d%%", statistics[0].packets_received, statistics[0].packets_lost, statistics[0].repeat_packets,
 			statistics[0].packets_received == 0 ? 0 : 100 * statistics[0].packets_lost / (statistics[0].packets_lost + statistics[0].packets_received));
 		statistics[0].packets_lost = 0;
 		statistics[0].packets_received = 0;
+		statistics[0].repeat_packets = 0;
 		k_msleep(1000);
 		continue;
 #endif
