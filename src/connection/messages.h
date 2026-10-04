@@ -32,9 +32,10 @@ enum __attribute__ ((__packed__)) server_type_t {
 };
 
 enum __attribute__ ((__packed__)) esb_prtocol_version_t {
-    P_VERSION_LEGACY = 0,
-    P_VERSION_TRANSITIONAL = 2,
-    P_VERSION_MODERN = 3
+    P_VERSION_OLD = 0,
+    P_VERSION_LEGACY = 2,
+    P_VERSION_TRANSITIONAL = 3,
+    P_VERSION_MODERN = 4
 };
 
 typedef struct __attribute__((packed)) {
