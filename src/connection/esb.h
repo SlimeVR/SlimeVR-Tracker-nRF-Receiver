@@ -99,6 +99,7 @@ uint8_t esb_add_pair(uint64_t addr);
 void esb_clear(void);
 void esb_ping(uint64_t receiver_addr, uint8_t channel);
 void esb_tracker_message(uint8_t * data, int length);
+void esb_packet_stat(uint8_t tracker_id, uint8_t packet_number, uint8_t packet_id, bool window_hit);
 
 struct ping_request_t {
 	uint64_t target;

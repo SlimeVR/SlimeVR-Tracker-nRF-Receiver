@@ -66,4 +66,7 @@ config ESB_CHANNEL
     help
         ESB channel frequency used on initialization.
 
+config BTF_DUT
+    bool "Test mode for certification"
+
 source "Kconfig.zephyr"

@@ -105,6 +105,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 		return;
 	#endif
 	const uint8_t packet_id = pdu_data[1];
+	const uint8_t packet_number = pdu_data[0]; // Sequence number
 	if(pipe_id == 0) {
 		switch(packet_id) {
 		case ESB_PACKET_CONTROL_PING:
@@ -113,23 +114,27 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 				return;
 			}
 			uint64_t dongle_hwid = *((uint64_t *) &pdu_data[8]) & 0xFFFFFFFFFFFF;
+#if !CONFIG_BTF_DUT
 			uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR;
 			if(dongle_hwid != ((*addr) & 0xFFFFFFFFFFFF)) {
 				LOG_INF("Received PING packet for %012llX", dongle_hwid);
 				return; // Not our ping
 			}
+#endif
 			memcpy(&ack_payload->data[8], &dongle_hwid, 6);
 			ack_payload->data[1] = ESB_PACKET_CONTROL_PONG;
 			uint64_t tracker_hwid = *((uint64_t *) &pdu_data[2]) & 0xFFFFFFFFFFFF;
 			memcpy(&ack_payload->data[2], &tracker_hwid, 6);
-			LOG_INF("Ping packet received from %012llX", tracker_hwid);
 			ack_payload->length = 14;
 			*has_ack_payload = true;
+#if CONFIG_BTF_DUT
+			esb_packet_stat(0, packet_number, packet_id, true);
+#else
+			LOG_INF("Ping packet received from %012llX", tracker_hwid);
+#endif
 			return;
 		}
-	}
-	if(pipe_id != 0) {
-		const uint8_t packet_number = pdu_data[0]; // Sequence number
+	} else {
 		const uint8_t tracker_id = pdu_data[2];
 		ack_payload->data[0] = packet_number;
 		switch(packet_id) {
@@ -222,32 +227,8 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			ack_payload->length = 8;
 			*has_ack_payload = true;
 		}
-
-		struct con_stat* stat = &statistics[tracker_id];
-
-		if(packet_number != stat->last_packet_number) {
-			stat->packets_received++;
-			if(tracker_window != current_window)
-				stat->windows_missed++;
-			else
-				stat->windows_hit++;
-
-			uint8_t diff = packet_number - stat->last_packet_number;
-			stat->packets_lost += diff - 1;
-			stat->last_packet_number = packet_number;
-			stat->max_gap = MAX(stat->max_gap, diff - 1);
-			if(is_rotation_packet(packet_id)) {
-				uint8_t r_diff = packet_number - stat->last_rotation_packet;
-				stat->max_rotation_gap = MAX(stat->max_rotation_gap, r_diff - 1);
-				stat->last_rotation_packet = packet_number;
-			}
-			if(diff > 3) {
-				LOG_WRN("Tracker %d lost %d packets in a row (max gap %d, max r-gap %d)", tracker_id, diff-1, stat->max_gap, stat->max_rotation_gap);
-			}
-		} else {
-			stat->repeat_packets++;
-		}
-
+		
+		esb_packet_stat(tracker_id, packet_number, packet_id, current_window == tracker_window);
 		// uint16_t packet_n = next_packet_statistics++;
 		// packets_statistics[packet_n].tracker_id = tracker_id;
 		// packets_statistics[packet_n].corect_window = tracker_window;
@@ -260,6 +241,33 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			if(tracker_window != current_window)
 				LOG_WRN("Tracker %d missed it's window (expected %d, got %d), slot %d", tracker_id, tracker_window, current_window, current_slot);
 		}
+	}
+}
+
+void esb_packet_stat(uint8_t tracker_id, uint8_t packet_number, uint8_t packet_id, bool window_hit) {
+	struct con_stat* stat = &statistics[tracker_id];
+
+	if(packet_number != stat->last_packet_number) {
+		stat->packets_received++;
+		if(window_hit)
+			stat->windows_hit++;
+		else
+			stat->windows_missed++;
+
+		uint8_t diff = packet_number - stat->last_packet_number;
+		stat->packets_lost += diff - 1;
+		stat->last_packet_number = packet_number;
+		stat->max_gap = MAX(stat->max_gap, diff - 1);
+		if(is_rotation_packet(packet_id)) {
+			uint8_t r_diff = packet_number - stat->last_rotation_packet;
+			stat->max_rotation_gap = MAX(stat->max_rotation_gap, r_diff - 1);
+			stat->last_rotation_packet = packet_number;
+		}
+		if(diff > 3) {
+			LOG_WRN("Tracker %d lost %d packets in a row (max gap %d, max r-gap %d)", tracker_id, diff-1, stat->max_gap, stat->max_rotation_gap);
+		}
+	} else {
+		stat->repeat_packets++;
 	}
 }
 
@@ -297,7 +305,7 @@ void event_handler(struct esb_evt const *event)
 
 			if(rx_payload.pipe == 0 && rx_payload.data[0] == 0xCD && rx_payload.data[1] == 3) {
 				uint64_t dongle_hwid = *((uint64_t *) &rx_payload.data[2]) & 0xFFFFFFFFFFFF;
-				LOG_WRN("Outdated Dongle Status packet received during normal operation from %012llX on channel %d. Expect interference.", dongle_hwid, currentESBChannel);
+				LOG_WRN("Outdated Dongle Status packet received during normal operation from %012llX on channel %d. Expect interference.", dongle_hwid, esb_channel);
 				return;
 			}
 			
@@ -475,7 +483,6 @@ void esb_deinitialize() {
 	if(!esb_initialized)
 		return;
 	esb_initialized = false;
-	k_msleep(1); // wait for pending transmissions
 	esb_stop_rx();
 	esb_disable();
 }
@@ -525,7 +532,7 @@ int esb_initialize(bool tx, bool advertize)
 		config.crc = SWEEP_TEST ? ESB_CRC_OFF : ESB_CRC_16BIT;
 		config.tx_output_power = CONFIG_RADIO_TX_POWER;
 		config.retransmit_delay = 435;
-		// config.retransmit_count = 3;
+		// config.retransmit_count = 0;
 		// config.tx_mode = ESB_TXMODE_AUTO;
 		// config.payload_length = 32;
 		config.selective_auto_ack = true;
@@ -670,7 +677,7 @@ void prepare_ping_packet() {
 void use_channel(uint8_t bundle_id) {
 	currentChannelBundle = bundle_id;
 	esb_channel = ESB_ALLOWED_CHANNEL_BUNDLES[bundle_id];
-	LOG_INF("Found an empty channel %d (id %d)", currentESBChannel, bundle_id);
+	LOG_INF("Found an empty channel %d (id %d)", esb_channel, bundle_id);
 
 	esb_initialize(false, false);
 	dongle_state = ACTIVE;
@@ -728,7 +735,7 @@ void pick_channels() {
 
 static void esb_thread(void)
 {
-#if SWEEP_TEST || RSSI_SCAN || ED_SCAN
+#if SWEEP_TEST || RSSI_SCAN || ED_SCAN || CONFIG_BTF_DUT
 	k_msleep(5000);
 #endif
 	for (int i = 0; i < MAX_TRACKERS; i++)
@@ -754,7 +761,15 @@ static void esb_thread(void)
 	sweep_run();
 #endif
 	esb_start_rx();
+	
+#if CONFIG_BTF_DUT
+	esb_channel = 50;
+	esb_initialize(false, false);
+	esb_start_rx();
+	dongle_state = ACTIVE;
+#else
 	pick_channels();
+#endif
 
 	set_led(SYS_LED_PATTERN_ACTIVE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
 
@@ -782,6 +797,14 @@ static void esb_thread(void)
 		}
 #endif
 		last_slot = current_slot;
+#if CONFIG_BTF_DUT
+		LOG_INF("[DUT] Packets received: %d, packets lost: %d, loss: %d%%", statistics[0].packets_received, statistics[0].packets_lost,
+			statistics[0].packets_received == 0 ? 0 : 100 * statistics[0].packets_lost / (statistics[0].packets_lost + statistics[0].packets_received));
+		statistics[0].packets_lost = 0;
+		statistics[0].packets_received = 0;
+		k_msleep(1000);
+		continue;
+#endif
 		if(is_dongle_window()) {
 			if(!was_dongle_window) {
 				was_dongle_window = true;
