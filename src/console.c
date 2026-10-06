@@ -36,15 +36,10 @@
 
 #include <ctype.h>
 
-#define DFU_DBL_RESET_MEM 0x20007F7C
-#define DFU_DBL_RESET_APP 0x4ee5677e
-
-uint32_t* dbl_reset_mem = ((uint32_t*) DFU_DBL_RESET_MEM);
-
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
 static void console_thread(void);
-K_THREAD_DEFINE(console_thread_id, 1024, console_thread, NULL, NULL, NULL, 6, 0, 0);
+K_THREAD_DEFINE(console_thread_id, 1024, console_thread, NULL, NULL, NULL, CONSOLE_THREAD_PRIORITY, 0, 0);
 
 #define DFU_EXISTS CONFIG_BUILD_OUTPUT_UF2 || CONFIG_BOARD_HAS_NRF5_BOOTLOADER
 #define ADAFRUIT_BOOTLOADER CONFIG_BUILD_OUTPUT_UF2
@@ -105,8 +100,7 @@ static const char *meow_suffixes[] = {
 static void skip_dfu(void)
 {
 #if DFU_EXISTS // Using Adafruit bootloader
-	(*dbl_reset_mem) = DFU_DBL_RESET_APP; // Skip DFU
-	ram_range_retain(dbl_reset_mem, sizeof(dbl_reset_mem), true);
+	NRF_POWER->GPREGRET = 0x6d;
 #endif
 }
 
@@ -114,12 +108,15 @@ static void print_info(void)
 {
 	printk(CONFIG_USB_DEVICE_MANUFACTURER " " CONFIG_USB_DEVICE_PRODUCT "\n");
 	printk(FW_STRING);
+    printk("Commit: " TOSTRING(APP_BUILD_VERSION) "\n");
+    printk("Build: %d-%02d-%02d %02d:%02d:%02d\n", BUILD_YEAR, BUILD_MONTH, BUILD_DAY, BUILD_HOUR, BUILD_MIN, BUILD_SEC);
 
 	printk("\nBoard: " CONFIG_BOARD "\n");
 	printk("SOC: " CONFIG_SOC "\n");
 	printk("Target: " CONFIG_BOARD_TARGET "\n");
 
 	printk("\nDevice address: %012llX\n", *(uint64_t *)NRF_FICR->DEVICEADDR & 0xFFFFFFFFFFFF);
+	printk("Channel frequency: %d\n", esb_get_frequency());
 }
 
 static void print_uptime(void)
@@ -175,7 +172,6 @@ static void print_help(void)
 	printk("list                         Get paired devices\n");
 	printk("reboot                       Soft reset the device\n");
 	printk("\nadd <address>                Manually add a device\n");
-	printk("remove                       Remove last device\n");
 	printk("pair                         Enter pairing mode\n");
 	printk("exit                         Exit pairing mode\n");
 	printk("clear                        Clear stored devices\n");
@@ -202,7 +198,7 @@ static void console_thread(void)
 	const char command_list[] = "list";
 	const char command_reboot[] = "reboot";
 	const char command_add[] = "add";
-	const char command_remove[] = "remove";
+	const char command_ping[] = "ping";
 	const char command_pair[] = "pair";
 	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
@@ -247,13 +243,21 @@ static void console_thread(void)
 			uint8_t buf[13];
 			snprintk(buf, 13, "%012llx", addr);
 			if (addr != 0 && strcmp(buf, argv[1]) == 0)
-				esb_add_pair(addr, true);
+				esb_add_pair(addr);
 			else
 				printk("Invalid address\n");
 		}
-		else if (strcmp(line, command_remove) == 0)
+		else if (strcmp(argv[0], command_ping) == 0)
 		{
-			esb_pop_pair();
+			if (argc != 3)
+			{
+				printk("Invalid number of arguments\n");
+				continue;
+			}
+			uint64_t addr = parse_u64(argv[1], 16);
+			uint64_t channel = parse_u64(argv[2], 10);
+			printk("Sending PING to %012llx on channel %d\n", addr, (int) channel);
+			esb_ping(addr, channel);
 		}
 		else if (strcmp(line, command_list) == 0)
 		{
@@ -263,14 +267,6 @@ static void console_thread(void)
 		{
 			skip_dfu();
 			sys_reboot(SYS_REBOOT_COLD);
-		}
-		else if (strcmp(line, command_pair) == 0)
-		{
-			esb_reset_pair();
-		}
-		else if (strcmp(line, command_exit) == 0)
-		{
-			esb_finish_pair();
 		}
 		else if (strcmp(line, command_clear) == 0)
 		{

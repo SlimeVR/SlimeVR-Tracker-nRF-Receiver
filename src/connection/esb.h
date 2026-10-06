@@ -20,26 +20,116 @@
 	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 	THE SOFTWARE.
 */
-#ifndef SLIMENRF_ESB
-#define SLIMENRF_ESB
+#pragma once
 
 #include <esb.h>
+#include "tdma.h"
+#include <zephyr/kernel.h>
+
+#define ESB_VERSION 2
+#define PROTOCOL_VERSION 2
+
+#define ESB_PACKET_MAX_SIZE 17
+#define ESB_PACKET_DATA_LEGACY_SIZE 16
+
+#define ESB_PACKET_BROADCAST 255
+#define ESB_PACKET_DONGLE_PACKETS 200
+
+#define ESB_PACKET_DONGLE_CONNECT 201
+#define ESB_PACKET_DONGLE_CONNECT_REPLY 202
+#define ESB_PACKET_DONGLE_RECONNECT 203
+#define SERVER_PACKET_SERVER_HELLO 204
+#define SERVER_PACKET_DONGLE_INFO 205
+#define SERVER_PACKET_CLEAR_PAIRING 206
+#define SERVER_PACKET_SEND_TRACKERS_LIST 207
+#define SERVER_PACKET_TRACKERS_LIST 208
+#define SERVER_PACKET_CONFIG 209
+
+#define ESB_PACKET_CONTROL_PAIR_REQEST 231
+#define ESB_PACKET_CONTROL_PAIR_RESPONSE 232
+#define ESB_PACKET_CONTROL_DONGLE_STATUS 233
+#define ESB_PACKET_CONTROL_NO_WINDOWS 234 // Not used, reserved
+#define ESB_PACKET_CONTROL_WINDOW_INFO 235
+#define ESB_PACKET_CONTROL_PING 236
+#define ESB_PACKET_CONTROL_PONG 237
+
+#define ESB_PACKET_CONTROL_TEST 250
+
+#define ESB_DONGLE_FLAG_ACCEPTS_NEW_TRACKERS 0x1
+#define ESB_DONGLE_FLAG_FORCE_PAIRING 0x2
+#define ESB_DONGLE_FLAG_NO_TDMA 0x4
+
+#define ESB_DEVICE_TYPE_NORMAL 0
+#define ESB_DEVICE_TYPE_GLOVE_LEFT 1
+#define ESB_DEVICE_TYPE_GLOVE_RIGHT 2
+
+#define ESB_STATUS_ERROR 200
+#define ESB_STATUS_NO_SLOTS 201
+#define ESB_STATUS_NOT_ACCEPTING 202
+#define ESB_STATUS_NOT_PAIRED 203
+
+#define ESB_EMPTY_PAYLOAD(_pipe, _length) \
+	{                                     \
+		.pipe = _pipe,                    \
+		.length = _length,                \
+		.data = { 0 }                     \
+	}
+
+#define WRONG_TRACKER_ID 255
+
+#define ESB_TRACKER_QUEUE_SIZE 5
+#define ESB_TRACKER_PACKET_MAX_LENGTH 32
+typedef struct {
+	uint8_t length;
+	uint8_t data[ESB_TRACKER_PACKET_MAX_LENGTH];
+} tracker_packet_t;
+
+extern uint8_t stored_trackers;
+extern uint64_t stored_tracker_addr[MAX_TRACKERS];
+extern struct k_msgq tracker_queues[MAX_TRACKERS];
 
 void event_handler(struct esb_evt const *event);
+void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struct esb_payload *ack_payload, bool *has_ack_payload);
 int clocks_start(void);
-int esb_initialize(bool);
-
-void esb_set_addr_discovery(void);
-void esb_set_addr_paired(void);
-
-void esb_add_pair(uint64_t addr, bool checksum);
-void esb_pop_pair(void);
-
-void esb_pair(void);
-void esb_reset_pair(void);
-void esb_finish_pair(void);
+int esb_initialize(bool tx, bool advertize);
+uint8_t esb_get_tracker_id(uint64_t addr);
+void esb_set_addr(void);
+int esb_get_frequency(void);
+uint8_t esb_add_pair(uint64_t addr);
 void esb_clear(void);
-void esb_write_sync(uint16_t led_clock);
-void esb_receive(void);
+void esb_ping(uint64_t receiver_addr, uint8_t channel);
+void esb_tracker_message(uint8_t * data, int length);
+void esb_packet_stat(uint8_t tracker_id, uint8_t packet_number, uint8_t packet_id, bool window_hit);
 
-#endif
+struct ping_request_t {
+	uint64_t target;
+	uint64_t time;
+	uint8_t channel;
+};
+
+enum dongle_state_t {
+	CHANNEL_SELECT,
+	ACTIVE,
+	NO_CHANNELS
+};
+
+/*
+ * Best channels and frequencies to use:
+ * 20, 21, 22, 23, 24: 2420MHz to 2424Mhz - BT channels 8, 9, 10 outside of WiFi channels
+ * 48, 49, 50, 51, 52: 2448MHz to 2452Mhz - BT channels 21, 22, 23 outside of WiFi channels
+ * 72, 73, 74, 75, 76, 77, 78: 2472MHz to 2478Mhz - BT channels 33, 34, 35, 36 outside WiFi channels
+ * 82, 83: 2482Mhz to 2483Mhz - outside of used WiFi and BT spectrums
+ * Higher channels can be restricted by country.
+ *
+ * WARNING: Using nearby channels can lead to overlap, i.e. packets sent to Channel 20
+ * can be received by a device tuned to Channel 21, so it's recommended to
+ * ONLY USE EVEN CHANNELS
+ */
+
+#define ESB_RIMARY_ADVERTISEMENT_CHANNEL 22
+#define ESB_SECONDARY_ADVERTISEMENT_CHANNEL 4
+#define ESB_CHANNELS_AMOUNT 37
+#define ESB_CHANNELS 78, 76, 80, 82, 74, 72, 52, 50, 24, 48, 70, 68, 46, 44, 20, 54, 56, 28, 30, 6, 8, 10, 12, 14, 16, 18, 32, 34, 36, 38, 40, 42, 58, 60, 62, 64, 66
+#define ESB_CHANNEL_DISCOVERY_TIME 2200
+#define ESB_CHANNEL_DISCOVERY_ADDITION 1100
+

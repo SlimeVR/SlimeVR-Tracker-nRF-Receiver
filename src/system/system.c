@@ -20,6 +20,12 @@ LOG_MODULE_REGISTER(system, LOG_LEVEL_INF);
 
 static bool nvs_init = false;
 
+#if DT_NODE_HAS_PROP(DT_ALIAS(sw0), gpios)
+#define BUTTON_EXISTS true
+#else
+#pragma message "Button GPIO does not exist"
+#endif
+
 static int sys_nvs_init(void)
 {
 	if (nvs_init)
@@ -53,19 +59,6 @@ static int sys_nvs_init(void)
 
 SYS_INIT(sys_nvs_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
-// TODO: switch back to retained?
-uint8_t reboot_counter_read(void)
-{
-	uint8_t reboot_counter;
-	nvs_read(&fs, RBT_CNT_ID, &reboot_counter, sizeof(reboot_counter));
-	return reboot_counter;
-}
-
-void reboot_counter_write(uint8_t reboot_counter)
-{
-	nvs_write(&fs, RBT_CNT_ID, &reboot_counter, sizeof(reboot_counter));
-}
-
 // retained not implemented
 void sys_write(uint16_t id, void *retained_ptr, const void *data, size_t len)
 {
@@ -97,4 +90,13 @@ void sys_read(uint16_t id, void *data, size_t len)
 		memset(data, 0, len);
 		return;
 	}
+}
+
+bool button_read()
+{
+#if BUTTON_EXISTS
+	return gpio_pin_get_dt(&button0);
+#else
+	return false;
+#endif
 }
