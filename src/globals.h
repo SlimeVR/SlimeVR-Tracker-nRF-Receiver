@@ -24,5 +24,4 @@
 
 #include <zephyr/logging/log.h>
 
-#include "retained.h"
 #include "thread_priority.h"

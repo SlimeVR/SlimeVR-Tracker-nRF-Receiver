@@ -36,11 +36,6 @@
 
 #include <ctype.h>
 
-#define DFU_DBL_RESET_MEM 0x20007F7C
-#define DFU_DBL_RESET_APP 0x4ee5677e
-
-uint32_t* dbl_reset_mem = ((uint32_t*) DFU_DBL_RESET_MEM);
-
 LOG_MODULE_REGISTER(console, LOG_LEVEL_INF);
 
 static void console_thread(void);
@@ -105,8 +100,7 @@ static const char *meow_suffixes[] = {
 static void skip_dfu(void)
 {
 #if DFU_EXISTS // Using Adafruit bootloader
-	(*dbl_reset_mem) = DFU_DBL_RESET_APP; // Skip DFU
-	ram_range_retain(dbl_reset_mem, sizeof(dbl_reset_mem), true);
+	NRF_POWER->GPREGRET = 0x6d;
 #endif
 }
 
