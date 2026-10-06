@@ -23,13 +23,42 @@
 #include "globals.h"
 #include "system/system.h"
 
-#include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/reboot.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
+#define DFU_EXISTS CONFIG_BUILD_OUTPUT_UF2 || CONFIG_BOARD_HAS_NRF5_BOOTLOADER
+#define ADAFRUIT_BOOTLOADER CONFIG_BUILD_OUTPUT_UF2
+#define NRF5_BOOTLOADER CONFIG_BOARD_HAS_NRF5_BOOTLOADER
+
+#if NRF5_BOOTLOADER
+static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+#endif
+
 int main(void)
 {
-	
+#if DFU_EXISTS
+	if (button_read())
+	{
+		int64_t start_time = k_uptime_get();
+		while (button_read())
+		{
+			if (k_uptime_get() - start_time > 50)
+			{
+				LOG_INF("DFU requested");
+#if ADAFRUIT_BOOTLOADER
+				NRF_POWER->GPREGRET = 0x57;
+				sys_reboot(SYS_REBOOT_COLD);
+#endif
+#if NRF5_BOOTLOADER
+				gpio_pin_configure(gpio_dev, 19, GPIO_OUTPUT | GPIO_OUTPUT_INIT_LOW);
+#endif
+			}
+			k_msleep(1);
+		}
+	}
+#endif
 
 	return 0;
 }
