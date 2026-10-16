@@ -228,7 +228,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 			ack_payload->length = 8;
 			*has_ack_payload = true;
 		}
-		
+
 		esb_packet_stat(tracker_id, packet_number, packet_id, current_window == tracker_window);
 		// uint16_t packet_n = next_packet_statistics++;
 		// packets_statistics[packet_n].tracker_id = tracker_id;
@@ -309,7 +309,7 @@ void event_handler(struct esb_evt const *event)
 				LOG_WRN("Outdated Dongle Status packet received during normal operation from %012llX on channel %d. Expect interference.", dongle_hwid, esb_channel);
 				return;
 			}
-			
+
 			if(rx_payload.data[1] > ESB_PACKET_DONGLE_PACKETS) {
 				// Packet for dongle received
 				switch(rx_payload.data[1]) {
@@ -497,7 +497,7 @@ int esb_initialize(bool tx, bool advertize)
 			uint32_t current_channel = 0;
 			esb_get_rf_channel(&current_channel);
 			if(esb_channel == current_channel)
-				return 0;		
+				return 0;
 		}
 		esb_deinitialize();
 	}
@@ -658,7 +658,7 @@ void prepare_dongle_sate_packet() {
 	uint8_t has_empty_windows_flag = (tdma_has_empty_windows() ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
 	uint8_t force_pairing_flag = (0) << 1; // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
 	tx_payload_dongle_sate.data[9] = has_empty_windows_flag | force_pairing_flag; // Dongle sate flags
-	
+
 	uint32_t tdma_timer = tdma_get_timer();
 	memcpy(&tx_payload_dongle_sate.data[10], &tdma_timer, sizeof(tdma_timer));
 	tx_payload_dongle_sate.data[14] = ESB_VERSION;
@@ -824,7 +824,7 @@ static void esb_thread(void)
 					k_sleep(K_TICKS(1 + (status_timing_shift++ % 3)));
 				}
 				esb_deinitialize();
-				
+
 				if(ping_request.target != 0) {
 					prepare_ping_packet();
 					uint8_t ch = esb_channel;

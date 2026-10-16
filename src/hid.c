@@ -145,7 +145,7 @@ static void send_report(struct k_work *work)
 }
 
 void hid_report_received(uint8_t * report_buffer, int length) {
-	
+
 	for (int offset = 0; offset < length; offset += 16)
 	{
 		uint8_t *packet = report_buffer + offset;
