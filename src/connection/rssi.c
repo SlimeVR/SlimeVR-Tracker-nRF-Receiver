@@ -85,11 +85,11 @@ uint8_t ed_scan_channel_repeat(uint8_t channel_number)
 	return sample;
 }
 
-struct ch_scan_result_t {
+struct ch_scan_result {
 	uint8_t min;
 	uint8_t max;
 	uint32_t sum;
-} ch_scan_result;
+};
 
 #define PRINT_PROGRESS false
 void scan_print_sweep() {
@@ -108,7 +108,7 @@ void scan_print_sweep() {
 	while(true) {
 		scan++;
 		printk("Scan %d\n", scan);
-		struct ch_scan_result_t scan_results[86 / 2] = {};
+		struct ch_scan_result scan_results[86 / 2] = {};
 		for(int i = 0; i < 86 / 2; ++i) {
 			scan_results[i].min = 127;
 		}

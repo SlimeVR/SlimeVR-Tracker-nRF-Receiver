@@ -59,7 +59,7 @@ static bool esb_advertize = false;
 static uint8_t esb_channel = ESB_RIMARY_ADVERTISEMENT_CHANNEL;
 static bool accepts_pairing = true;
 static uint8_t currentChannelBundle = 0;
-static enum dongle_state_t dongle_state = CHANNEL_SELECT;
+static enum dongle_state dongle_state = CHANNEL_SELECT;
 static uint64_t channel_discovery_time = 0;
 static bool write_stored_trackers = false;
 static struct ping_request_t ping_request;

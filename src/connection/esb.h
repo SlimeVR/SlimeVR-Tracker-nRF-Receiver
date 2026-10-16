@@ -79,7 +79,7 @@
 
 #define ESB_TRACKER_QUEUE_SIZE 5
 #define ESB_TRACKER_PACKET_MAX_LENGTH 32
-typedef struct {
+typedef struct tracker_packet {
 	uint8_t length;
 	uint8_t data[ESB_TRACKER_PACKET_MAX_LENGTH];
 } tracker_packet_t;
@@ -107,7 +107,7 @@ struct ping_request_t {
 	uint8_t channel;
 };
 
-enum dongle_state_t {
+enum dongle_state {
 	CHANNEL_SELECT,
 	ACTIVE,
 	NO_CHANNELS
