@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(dongle_messages, LOG_LEVEL_INF);
 static bool sent_data = false;
 
 void send_dongle_info() {
-    packet_dongle_into_t dongle_info;
+    packet_dongle_info_t dongle_info;
     dongle_info.packet_id = SERVER_PACKET_DONGLE_INFO;
     // Basic info
     dongle_info.data_type = DATA_BASIC_INFO;
@@ -44,7 +44,7 @@ void send_dongle_info() {
     basic_info.dongle_hardware_revision = 1;
     basic_info.protocol_version = P_VERSION_LEGACY;
     memcpy(dongle_info.data_array, &basic_info, sizeof(packet_dongle_info_basic_t));
-    hid_write_packet_n((uint8_t *) &dongle_info, sizeof(packet_dongle_into_t));
+    hid_write_packet_n((uint8_t *) &dongle_info, sizeof(packet_dongle_info_t));
     // TODO Other info
 }
 

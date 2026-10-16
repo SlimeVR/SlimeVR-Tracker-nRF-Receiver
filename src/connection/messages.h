@@ -61,13 +61,13 @@ enum dongle_info_data_type {
     DATA_CHANNEL_SETTINGS = 7,
 } __packed;
 
-typedef struct packet_dongle_into {
+typedef struct packet_dongle_info {
     uint8_t seq;
     uint8_t packet_id;
     enum dongle_info_data_type data_type;
     uint8_t data_length;
     uint8_t data_array[59];
-} __packed packet_dongle_into_t;
+} __packed packet_dongle_info_t;
 
 enum dongle_hardware_type {
     HARDWARE_UNKNOWN = 0,
