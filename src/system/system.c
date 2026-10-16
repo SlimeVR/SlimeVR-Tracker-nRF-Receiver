@@ -92,6 +92,10 @@ void sys_read(uint16_t id, void *data, size_t len)
 	}
 }
 
+#if BUTTON_EXISTS
+static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+#endif
+
 bool button_read()
 {
 #if BUTTON_EXISTS
