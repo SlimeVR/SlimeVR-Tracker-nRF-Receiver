@@ -58,7 +58,7 @@ void process_server_hello(uint8_t * data, int length) {
         return;
     }
     packet_server_hello_t server_hello = *(packet_server_hello_t * ) &data[0];
-    LOG_INF("Server hello: protocol %d, server type: %d, flags: %d, time %d", server_hello.protocol_version, server_hello.server_type, data[4], server_hello.server_time);
+    LOG_INF("Server hello: protocol %d, server type: %d, flags: %d, time %llu", server_hello.protocol_version, server_hello.server_type, data[4], server_hello.server_time);
     if(server_hello.flag_send_all || !sent_data) {
         sent_data = true;
         //send_dongle_info();

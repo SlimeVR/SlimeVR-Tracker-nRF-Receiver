@@ -199,8 +199,6 @@ static void console_thread(void)
 	const char command_reboot[] = "reboot";
 	const char command_add[] = "add";
 	const char command_ping[] = "ping";
-	const char command_pair[] = "pair";
-	const char command_exit[] = "exit";
 	const char command_clear[] = "clear";
 #if DFU_EXISTS
 	const char command_dfu[] = "dfu";

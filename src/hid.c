@@ -31,7 +31,7 @@
 static struct k_work report_send;
 static struct k_work report_read;
 
-static struct report_t {
+struct report_t {
 	uint8_t length;
 	uint8_t data[64];
 };
@@ -284,6 +284,6 @@ void hid_write_packet_n(uint8_t *data, size_t size)
 	struct report_t report;
 	report.length = size;
 	memcpy(&report.data, data, size);
-	
+
 	k_msgq_put(&reports, &report, K_NO_WAIT);
 }
