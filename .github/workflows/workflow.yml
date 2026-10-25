@@ -200,6 +200,7 @@ jobs:
                   {boardname: "butterfly_p2_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P2_Receiver"},
                   {boardname: "butterfly_p3/nrf52820", fileformat: "hex", filename: "SlimeNRF_Butterfly_P3_Receiver"},
                   {boardname: "butterfly_p5_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P5_Receiver"},
+                  {boardname: "butterfly_dg1_uf2/nrf52833", fileformat: "uf2", filename: "SlimeVR_Butterfly_DG1_Receiver"},
                 ]
     runs-on: ubuntu-latest
     steps:
