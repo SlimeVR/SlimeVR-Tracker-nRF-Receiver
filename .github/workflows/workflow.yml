@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+    tags: ["*"]
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +15,7 @@ concurrency:
 permissions: write-all
 
 env:
-  ZEPHYR_SDK_VERSION: "0.16.9"
+  ZEPHYR_SDK_VERSION: "0.17.0"
 
 jobs:
   setup:
@@ -38,7 +39,7 @@ jobs:
         id: generate-vars
         run: |
           WEST_FILE="west.yml"
-          
+
           if [ -f "$WEST_FILE" ]; then
             echo "Found west.yml in the root directory"
           elif [ -f "zephyr-workspace/$WEST_FILE" ]; then
@@ -67,7 +68,7 @@ jobs:
             BRANCH="${GITHUB_REF#refs/heads/}"
             REPO_COMMIT="$GITHUB_SHA"
           fi
-          
+
           echo "sdk-hash=$SDK_COMMIT" >> "$GITHUB_OUTPUT"
           echo "sdk-revision=$SDK_REVISION" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
@@ -189,15 +190,17 @@ jobs:
       fail-fast: false
       matrix:
         boards: [
-                  {boardname: "nrf52840dongle/nrf52840", fileformat: "hex", filename: "SlimeNRF_Nordic_eByte_Dongle_Receiver"}, 
-                  {boardname: "holyiot_21017/nrf52840", fileformat: "hex", filename: "SlimeNRF_Holyiot_Dongle_Receiver"}, 
-                  {boardname: "promicro_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_ProMicro_Receiver"}, 
-                  {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver"}, 
-                  {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver"}, 
-                  {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver"}, 
-                  {boardname: "butterfly_p1_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P1_Receiver"}, 
-                  {boardname: "butterfly_p2_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P2_Receiver"}, 
+                  {boardname: "nrf52840dongle/nrf52840", fileformat: "hex", filename: "SlimeNRF_Nordic_eByte_Dongle_Receiver"},
+                  {boardname: "holyiot_21017/nrf52840", fileformat: "hex", filename: "SlimeNRF_Holyiot_Dongle_Receiver"},
+                  {boardname: "promicro_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_ProMicro_Receiver"},
+                  {boardname: "xiao_ble/nrf52840", fileformat: "uf2", filename: "SlimeNRF_XIAO_Receiver"},
+                  {boardname: "etee_dongle_uf2/nrf52840", fileformat: "uf2", filename: "SlimeNRF_etee_Receiver"},
+                  {boardname: "nrf52840dk/nrf52840", fileformat: "hex", filename: "SlimeNRF_nRF52840dk_Receiver"},
+                  {boardname: "butterfly_p1_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P1_Receiver"},
+                  {boardname: "butterfly_p2_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P2_Receiver"},
                   {boardname: "butterfly_p3/nrf52820", fileformat: "hex", filename: "SlimeNRF_Butterfly_P3_Receiver"},
+                  {boardname: "butterfly_p5_uf2/nrf52833", fileformat: "uf2", filename: "SlimeNRF_Butterfly_P5_Receiver"},
+                  {boardname: "butterfly_dg1_uf2/nrf52833", fileformat: "uf2", filename: "SlimeVR_Butterfly_DG1_Receiver"},
                 ]
     runs-on: ubuntu-latest
     steps:
@@ -296,3 +299,23 @@ jobs:
           name: ${{ matrix.boards.filename }}
           if-no-files-found: warn
           path: zephyr-workspace/Releases/${{ matrix.boards.filename }}.${{ matrix.boards.fileformat }}
+
+  create-release:
+    name: Finalize Release Draft
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Upload to draft release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            *.hex
+            *.uf2
