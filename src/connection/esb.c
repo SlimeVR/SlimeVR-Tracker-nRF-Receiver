@@ -655,9 +655,9 @@ void prepare_dongle_sate_packet() {
 	memcpy(&tx_payload_dongle_sate.data[2], addr, 6);
 	tx_payload_dongle_sate.data[8] = ESB_ALLOWED_CHANNEL_BUNDLES[currentChannelBundle];
 
-	uint8_t has_empty_windows_flag = (tdma_has_empty_windows() ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
+	uint8_t accepts_new_trackers = (stored_trackers != MAX_TRACKERS ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
 	uint8_t force_pairing_flag = (0) << 1; // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
-	tx_payload_dongle_sate.data[9] = has_empty_windows_flag | force_pairing_flag; // Dongle sate flags
+	tx_payload_dongle_sate.data[9] = accepts_new_trackers | force_pairing_flag; // Dongle sate flags
 
 	uint32_t tdma_timer = tdma_get_timer();
 	memcpy(&tx_payload_dongle_sate.data[10], &tdma_timer, sizeof(tdma_timer));
@@ -696,7 +696,6 @@ void pick_channels() {
 		LOG_INF("Scanning channel for occupancy..");
 		uint8_t found_channel = 255;
 		uint8_t channel_energy = 255;
-		// Channel picked successfully, we rockin'
 		for(int i = 0; i < sizeof(ESB_ALLOWED_CHANNEL_BUNDLES); ++i) {
 			int channel = ESB_ALLOWED_CHANNEL_BUNDLES[i];
 			bool occupied = false;
@@ -711,9 +710,9 @@ void pick_channels() {
 			}
 			if(!occupied) {
 				uint32_t energy = 0;
-				for(int it = 0; it < 100; ++it) {
+				for(int it = 0; it < 500; ++it) {
 				 	energy += ed_scan_channel_repeat(channel);
-					if(energy > 0)
+					if(energy > 0 && it >= 10)
 						break;
 					k_usleep(1);
 				}
