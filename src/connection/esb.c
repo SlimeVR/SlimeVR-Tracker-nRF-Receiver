@@ -63,7 +63,6 @@ static enum dongle_state dongle_state = CHANNEL_SELECT;
 static uint64_t channel_discovery_time = 0;
 static bool write_stored_trackers = false;
 static struct ping_request_t ping_request;
-uint8_t stored_trackers = 0;
 uint64_t stored_tracker_addr[MAX_TRACKERS] = {0};
 struct k_msgq tracker_queues[MAX_TRACKERS];
 static char __aligned(4) queue_buffers[MAX_TRACKERS][ESB_TRACKER_QUEUE_SIZE * sizeof(tracker_packet_t)];
@@ -135,7 +134,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 #endif
 			return;
 		}
-	} else {
+	} else if(pipe_id != 3) {
 		const uint8_t tracker_id = pdu_data[2];
 		ack_payload->data[0] = packet_number;
 		switch(packet_id) {
@@ -178,6 +177,7 @@ void ack_handler(uint8_t *pdu_data, uint8_t data_length, uint32_t pipe_id, struc
 					ack_payload->data[2] = ESB_STATUS_NO_SLOTS;
 				} else {
 					ack_payload->data[2] = tracker_id;
+					msg_send_tracker_info(tracker_id);
 				}
 			}
 			ack_payload->length = 11;
@@ -372,7 +372,7 @@ void event_handler(struct esb_evt const *event)
 
 			if(rx_payload.pipe != 0) {
 				uint8_t tracker_id = rx_payload.data[2];
-				if (tracker_id >= stored_trackers) // not a stored tracker
+				if(esb_get_tracker_addr(tracker_id) == 0) // not a stored tracker
 					continue;
 				if(tdma_get_tracker_window(tracker_id) == TDMA_WRONG_WINDOW) // Tracker doesn't have a window, refuse its packets
 					break;
@@ -403,6 +403,9 @@ void event_handler(struct esb_evt const *event)
 					if(rx_payload.data[1] == 8)
 						rx_payload.data[3] = rx_payload.rssi;
 					hid_write_packet_n(rx_payload.data, rx_payload.length); // write to hid endpoint
+				}
+				if(rx_payload.pipe == 3) {
+					LOG_INF("Mesh retransmitt received packet %d, tracker %d", rx_payload.data[1], rx_payload.data[2]);
 				}
 			}
 		}
@@ -438,8 +441,7 @@ void esb_ping(uint64_t receiver_addr, uint8_t channel) {
 	ping_request.channel = channel;
 }
 
-int clocks_start(void)
-{
+int clocks_start(void) {
 	int err;
 	int res;
 	struct onoff_manager *clk_mgr;
@@ -488,8 +490,7 @@ void esb_deinitialize() {
 	esb_disable();
 }
 
-int esb_initialize(bool tx, bool advertize)
-{
+int esb_initialize(bool tx, bool advertize) {
 	if(esb_initialized) {
 		if(tx == esb_tx && advertize == esb_advertize) {
 			if(advertize)
@@ -566,8 +567,7 @@ int esb_initialize(bool tx, bool advertize)
 	return 0;
 }
 
-inline void esb_set_addr(void)
-{
+inline void esb_set_addr(void) {
 	// Generate addresses from device address
 	uint64_t *addr = (uint64_t *)NRF_FICR->DEVICEADDR; // Use device address as unique identifier (although it is not actually guaranteed, see datasheet)
 	uint8_t buf[6] = {0};
@@ -596,25 +596,38 @@ int esb_get_frequency(void) {
 	return 2400UL + channel; // MHz
 }
 
-uint8_t esb_add_pair(uint64_t addr)
-{
+bool esb_has_space_for_pairing() {
+	for(int i = 0; i < MAX_TRACKERS; ++i)
+		if(stored_tracker_addr[i] == 0)
+			return true;
+	return false;
+}
+
+uint8_t esb_add_pair(uint64_t addr) {
 	if(addr == 0)
 		return ESB_STATUS_ERROR;
-	int id = stored_trackers;
-	for (int i = 0; i < stored_trackers; i++) // Check if the device is already stored
+	int id = MAX_TRACKERS;
+	for (int i = 0; i < MAX_TRACKERS; i++) // Check if the device is already stored
 	{
 		if (stored_tracker_addr[i] == addr)
 		{
 			id = i;
 		}
 	}
-	if (id == stored_trackers)
+	if (id == MAX_TRACKERS)
 	{
-		if(id == (sizeof(stored_tracker_addr) / sizeof(stored_tracker_addr[0])))
+		// Find empty slots in the middle
+		for (int i = 0; i < MAX_TRACKERS; i++)
+		{
+			if (stored_tracker_addr[i] == 0) {
+				id = i;
+				break;
+			}
+		}
+		if(id == MAX_TRACKERS)
 			return ESB_STATUS_NO_SLOTS;
 		LOG_INF("Added device on id %d with address %012llX", id, addr);
 		stored_tracker_addr[id] = addr;
-		stored_trackers++;
 		write_stored_trackers = true;
 	}
 	else
@@ -625,7 +638,7 @@ uint8_t esb_add_pair(uint64_t addr)
 }
 
 uint8_t esb_get_tracker_id(uint64_t addr) {
-	for (int i = 0; i < stored_trackers; i++) {
+	for (int i = 0; i < MAX_TRACKERS; i++) {
 		if (stored_tracker_addr[i] == addr) {
 			return i;
 		}
@@ -633,11 +646,28 @@ uint8_t esb_get_tracker_id(uint64_t addr) {
 	return WRONG_TRACKER_ID;
 }
 
-void esb_clear(void)
-{
-	stored_trackers = 0;
-	sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
-	LOG_INF("NVS Reset");
+uint64_t esb_get_tracker_addr(uint8_t tracker_id) {
+	return tracker_id >= MAX_TRACKERS ? 0 : stored_tracker_addr[tracker_id];
+}
+
+void esb_remove_pair(uint8_t tracker_id) {
+	if(tracker_id >= MAX_TRACKERS)
+		return;
+	uint64_t current_addr = esb_get_tracker_addr(tracker_id);
+	if(current_addr != 0) {
+		stored_tracker_addr[tracker_id] = 0;
+		tdma_clear_tracker_window(tracker_id);
+		write_stored_trackers = true;
+	}
+	msg_send_tracker_info(tracker_id);
+}
+
+void esb_clear(void) {
+	memset(stored_tracker_addr, 0, sizeof(stored_tracker_addr));
+	write_stored_trackers = true;
+	tdma_clear_all_windows();
+	LOG_INF("Cleared saved trackers");
+	msg_send_trackers_list(true); // Send all trackers to the server
 }
 
 bool is_dongle_window() {
@@ -655,7 +685,7 @@ void prepare_dongle_sate_packet() {
 	memcpy(&tx_payload_dongle_sate.data[2], addr, 6);
 	tx_payload_dongle_sate.data[8] = ESB_ALLOWED_CHANNEL_BUNDLES[currentChannelBundle];
 
-	uint8_t accepts_new_trackers = (stored_trackers != MAX_TRACKERS ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
+	uint8_t accepts_new_trackers = (esb_has_space_for_pairing() ? 1 : 0) << 0; // Accepts new trackers? - 0/1 bit, 1 if the dongle has empty slots to accept new tracker pairings
 	uint8_t force_pairing_flag = (0) << 1; // Force pair - 0/1 bit, tells unconnected trackers to pair to this dongle even if they have pairing information saved
 	tx_payload_dongle_sate.data[9] = accepts_new_trackers | force_pairing_flag; // Dongle sate flags
 
@@ -733,8 +763,7 @@ void pick_channels() {
 	}
 }
 
-static void esb_thread(void)
-{
+static void esb_thread(void) {
 #if SWEEP_TEST || RSSI_SCAN || ED_SCAN || CONFIG_BTF_DUT
 	k_msleep(5000);
 #endif
@@ -746,10 +775,13 @@ static void esb_thread(void)
 
 	clocks_start();
 
-	sys_read(STORED_TRACKERS, &stored_trackers, sizeof(stored_trackers));
-	for (int i = 0; i < stored_trackers; i++)
+	uint8_t stored = 0;
+	for (int i = 0; i < MAX_TRACKERS; i++) {
 		sys_read(STORED_ADDR_0 + i, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
-	LOG_INF("%d/%d devices stored", stored_trackers, MAX_TRACKERS);
+		if(stored_tracker_addr[i] != 0)
+			stored++;
+	}
+	LOG_INF("%d/%d devices stored", stored, MAX_TRACKERS);
 
 #if RSSI_SCAN || ED_SCAN
 	scan_print_sweep();
@@ -781,9 +813,8 @@ static void esb_thread(void)
 	while(dongle_state == ACTIVE) {
 		if(write_stored_trackers) {
 			write_stored_trackers = false;
-			for (int i = 0; i < stored_trackers; i++)
+			for (int i = 0; i < MAX_TRACKERS; i++)
 				sys_write(STORED_ADDR_0 + i, NULL, &stored_tracker_addr[i], sizeof(stored_tracker_addr[0]));
-			sys_write(STORED_TRACKERS, NULL, &stored_trackers, sizeof(stored_trackers));
 		}
 		// if(new_paired_address != 0) {
 		// 	esb_add_pair(new_paired_address, false);

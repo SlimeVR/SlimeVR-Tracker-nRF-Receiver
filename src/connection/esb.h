@@ -27,7 +27,7 @@
 #include <zephyr/kernel.h>
 
 #define ESB_VERSION 2
-#define PROTOCOL_VERSION 2
+#define PROTOCOL_VERSION 3
 
 #define ESB_PACKET_MAX_SIZE 17
 #define ESB_PACKET_DATA_LEGACY_SIZE 16
@@ -100,6 +100,8 @@ void esb_clear(void);
 void esb_ping(uint64_t receiver_addr, uint8_t channel);
 void esb_tracker_message(uint8_t * data, int length);
 void esb_packet_stat(uint8_t tracker_id, uint8_t packet_number, uint8_t packet_id, bool window_hit);
+void esb_remove_pair(uint8_t tracker_id);
+uint64_t esb_get_tracker_addr(uint8_t tracker_id);
 
 struct ping_request_t {
 	uint64_t target;

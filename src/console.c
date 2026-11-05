@@ -153,8 +153,9 @@ static void print_meow(void)
 static void print_list(void)
 {
 	printk("Stored devices:\n");
-	for (uint8_t i = 0; i < stored_trackers; i++)
-		printk("%012llX\n", stored_tracker_addr[i]);
+	for (uint8_t i = 0; i < MAX_TRACKERS; i++)
+		if(stored_tracker_addr[i] != 0)
+			printk("%012llX\n", stored_tracker_addr[i]);
 }
 
 static inline void strtolower(char *str) {

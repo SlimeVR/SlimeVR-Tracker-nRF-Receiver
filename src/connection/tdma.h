@@ -56,3 +56,7 @@ inline static uint32_t tdma_get_slot_time(uint32_t slot) {
 inline static uint32_t tdma_get_slot_from_window(uint16_t row, uint8_t window) {
 	return ((row * MAX_TRACKERS) + TDMA_DONGLE_SLOTS) + window;
 }
+
+void tdma_clear_all_windows();
+
+void tdma_clear_tracker_window(uint8_t tracker_id);

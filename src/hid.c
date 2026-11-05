@@ -37,7 +37,7 @@ struct report_t {
 };
 
 struct k_msgq reports;
-K_MSGQ_DEFINE(reports, sizeof(struct report_t), MAX_TRACKERS, 1);
+K_MSGQ_DEFINE(reports, sizeof(struct report_t), MAX_TRACKERS * 2, 1);
 
 static const struct device *hdev;
 static ATOMIC_DEFINE(hid_ep_in_busy, 1);
@@ -78,18 +78,19 @@ uint16_t sent_device_addr = 0;
 bool usb_enabled = false;
 int64_t last_registration_sent = 0;
 
-static void packet_device_addr(uint8_t *report, uint16_t id) // associate id and tracker address
+// associate id and tracker address in legacy protocol
+static void packet_device_addr(uint8_t *report, uint16_t id) 
 {
 	report[0] = 255; // receiver packet 0
 	report[1] = id;
 	memcpy(&report[2], &stored_tracker_addr[id], 6);
-	memset(&report[8], 0, 8); // last 8 bytes unused for now
+	memset(&report[8], 0, 8); // last 8 bytes unused
 }
 
 static void send_report(struct k_work *work)
 {
-	if (!usb_enabled) return;
-	if (!stored_trackers) return;
+	if (!usb_enabled)
+		return;
 
 	bool have_reports = k_msgq_num_used_get(&reports) > 0;
 
@@ -117,30 +118,28 @@ static void send_report(struct k_work *work)
 				break;
 			}
 		}
-		// Pad remaining report slots with device addr
-		// TODO : Not necessarry on Protocol 3
-		// TODO : Pad with RSSI packets
-		while(sizeof(report_buffer) - buffer_index >= 16) {
-			if (stored_trackers > 0) {
+		if(current_esb_protocol_version() < P_VERSION_TRANSITIONAL) {
+			// Pad remaining report slots with device addr
+			while(sizeof(report_buffer) - buffer_index >= 16) {
 				packet_device_addr(&report_buffer[buffer_index], sent_device_addr);
-				sent_device_addr = (sent_device_addr + 1) % stored_trackers;
+				sent_device_addr = (sent_device_addr + 1) % MAX_TRACKERS;
 				buffer_index += 16;
 			}
-		}
-
-		ret = hid_int_ep_write(hdev, report_buffer, sizeof(report_buffer), &wrote);
-
-		if (ret != 0) {
-			/*
-			 * Do nothing and wait until host has reset the device
-			 * and hid_ep_in_busy is cleared.
-			 */
-			LOG_ERR("Failed to submit report");
 		} else {
-			//LOG_DBG("Report submitted");
+			// TODO : Pad with RSSI packets
 		}
-	} else { // busy with what
-		//LOG_DBG("HID IN endpoint busy");
+
+		if(buffer_index > 0) {
+			ret = hid_int_ep_write(hdev, report_buffer, buffer_index, &wrote);
+
+			if (ret != 0) {
+				/*
+				* Do nothing and wait until host has reset the device
+				* and hid_ep_in_busy is cleared.
+				*/
+				LOG_ERR("Failed to submit report: %d", ret);
+			}
+		}
 	}
 }
 
@@ -177,7 +176,7 @@ static void read_report(struct k_work *work)
 		if (ret != 0) {
 			LOG_ERR("hid_int_ep_read: %d", ret);
 		} else {
-			LOG_INF("hid_int_ep_read: %d", read);
+			//LOG_INF("hid_int_ep_read: %d", read);
 			hid_report_received(ep_read_buffer, read);
 		}
 	} else { // busy with what

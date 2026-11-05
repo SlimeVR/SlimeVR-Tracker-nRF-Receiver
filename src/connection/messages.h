@@ -85,3 +85,19 @@ typedef struct packet_dongle_info_basic {
     uint8_t dongle_hardware_revision;
     enum esb_protocol_version protocol_version;
 } __packed packet_dongle_info_basic_t;
+
+typedef struct packet_trackers_list {
+    uint8_t seq;
+    uint8_t packet_id;
+    uint8_t tracker_id;
+    uint64_t tracker_hwid;
+    uint8_t sensors_num;
+    uint8_t tracker_status;
+} __packed packet_trackers_list_t;
+
+enum esb_protocol_version current_esb_protocol_version();
+
+enum server_type get_server_type();
+
+void msg_send_tracker_info(uint8_t tracker_id);
+void msg_send_trackers_list(bool send_all);

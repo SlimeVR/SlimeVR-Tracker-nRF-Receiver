@@ -79,6 +79,21 @@ uint8_t tdma_get_or_allocate_tracker_window(uint8_t tracker_id) {
     return window;
 }
 
+void tdma_clear_all_windows() {
+    memset(tdma_tracker_to_window, TDMA_WRONG_WINDOW, sizeof(tdma_tracker_to_window));
+    memset(tdma_windows, WRONG_TRACKER_ID, sizeof(tdma_windows));
+}
+
+void tdma_clear_tracker_window(uint8_t tracker_id) {
+    if(tracker_id < MAX_TRACKERS) {
+        uint8_t current_window = tdma_tracker_to_window[tracker_id];
+        if(current_window != TDMA_WRONG_WINDOW) {
+            tdma_tracker_to_window[tracker_id] = TDMA_WRONG_WINDOW;
+            tdma_windows[current_window] = WRONG_TRACKER_ID;
+        }
+    }
+}
+
 bool tdma_has_empty_windows() {
      for(int i = 0; i < MAX_TRACKERS; ++i) {
         if(tdma_windows[i] == WRONG_TRACKER_ID) {
